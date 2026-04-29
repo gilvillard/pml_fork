@@ -32,19 +32,12 @@ void nmod_poly_mat_mbasis(nmod_poly_mat_t appbas,
 
 void nmod_poly_mat_pmbasis(nmod_poly_mat_t appbas,
                            slong * shift,
-                           const nmod_poly_mat_t ipmat,
+                           const nmod_poly_mat_t pmat,
                            slong order)
 {
-
-    nmod_poly_mat_t pmat;
-
-    nmod_poly_mat_init(pmat, ipmat->r, ipmat->c, ipmat->modulus);
-    nmod_poly_mat_set_trunc(pmat,ipmat,order);
-
     if (order <= PMBASIS_THRES)
     {
         nmod_poly_mat_mbasis(appbas, shift, pmat, order);
-        nmod_poly_mat_clear(pmat);
         return;
     }
 
@@ -57,13 +50,12 @@ void nmod_poly_mat_pmbasis(nmod_poly_mat_t appbas,
 
     nmod_poly_mat_pmbasis(appbas, shift, pmat, order1);
 
-    nmod_poly_mat_mulmid(residual, appbas, pmat, order1, order);
+    nmod_poly_mat_middle_product_naive(residual, appbas, pmat, order1, order2-1);
 
     nmod_poly_mat_pmbasis(appbas2, shift, residual, order2);
 
-    nmod_poly_mat_multiply(appbas, appbas2, appbas);
+    nmod_poly_mat_mul(appbas, appbas2, appbas);
 
     nmod_poly_mat_clear(appbas2);
     nmod_poly_mat_clear(residual);
-    nmod_poly_mat_clear(pmat);
 }
