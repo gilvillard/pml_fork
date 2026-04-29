@@ -71,59 +71,15 @@ void nmod_poly_mat_mul_vdm2(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nm
  */
 void nmod_poly_mat_mul_waksman(nmod_poly_mat_t C, const nmod_poly_mat_t A,  const nmod_poly_mat_t B);
 
-/** Multiplication for polynomial matrices
- *  sets C = A * B
- *  output can alias input 
- *  uses mul_geometric 
- * 
- *  Linearizes B by columns into chunks of length deg(A) + 1
- * 
- *  Todo ASSUMPTION (not checked): existence of element of "large enough" order
- *           and fail flag when element not found
- *  Todo  no linearization in certain cases ?  
- *  
- */
-void nmod_poly_mat_mul_linearized(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B);
 
 
 /** Middle product for polynomial matrices
- *  Sets C = ((A * B mod x^nhi) div x^nlo)
- *  i.e., sets C to the first nhi - nlo middle coefficients of the product of A
- *  of length len1 and B of length len2 starting at offset nlo
- *
+ *  sets C = ((A * B) div x^dA) mod x^(dB+1), assuming deg(A) <= dA and deg(B) <= dA + dB
  *  output can alias input
  *  naive implementation (multiply, shift, truncate)
  */
-void nmod_poly_mat_mulmid_naive_old(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B,
-                                const slong nlo, const slong nhi);
-
-void nmod_poly_mat_mulmid_naive(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B,
-                                const slong nlo, const slong nhi);
-
-
-/** Middle product for polynomial matrices
- *  Sets C = ((A * B mod x^nhi) div x^nlo)
- *  i.e., sets C to the first nhi - nlo middle coefficients of the product of A
- *  of length len1 and B of length len2 starting at offset nlo
- *  output can alias input
- *  naive implementation (multiply, shift, truncate)
- */
-void nmod_poly_mat_mulmid_naive(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B,
-                                const slong nlo, const slong nhi);
-
-
-/** Middle product for polynomial matrices
- *  Sets C = ((A * B mod x^nhi) div x^nlo)
- *  i.e., sets C to the first nhi - nlo middle coefficients of the product of A
- *  of length len1 and B of length len2 starting at offset nlo
- *  uses geometric multiplication 
- *  
- *  Todo ASSUMPTION (not checked): existence of element of "large enough" order
- *           and fail flag when element not found 
- */
-void nmod_poly_mat_mulmid_linearized(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B,
-                                        const ulong nlo, const ulong nhi);
-
+void nmod_poly_mat_middle_product_naive(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B,
+                                        const ulong dA, const ulong dB);
 
 /** Middle product for polynomial matrices
  *  sets C = ((A * B) div x^dA) mod x^(dB+1)
@@ -158,8 +114,6 @@ void nmod_poly_mat_middle_product_3_primes(nmod_poly_mat_t C, const nmod_poly_ma
  *  uses geometric evaluation and interpolation
  *  \todo currently test fails
  */
-/* TODO check correctness carefully */
-/* TODO unify prototype mulmid */
 void nmod_poly_mat_middle_product_geometric(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B,
                                             const ulong dA, const ulong dB);
 
@@ -170,8 +124,6 @@ void nmod_poly_mat_middle_product_geometric(nmod_poly_mat_t C, const nmod_poly_m
  *  uses evaluation and interpolation at arithmetic points, done by matrix products
  *  ASSUME: large enough field 
  */
-/* TODO currently disabled */
-/* TODO unify prototype mulmid */
 void nmod_poly_mat_middle_product_vdm1(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B,
                                        const ulong dA, const ulong dB);
 
