@@ -30,47 +30,11 @@ void nmod_poly_mat_mbasis(nmod_poly_mat_t appbas,
     nmod_mat_poly_clear(app);
 }
 
-void nmod_poly_mat_pmbasis_old(nmod_poly_mat_t appbas,
+void nmod_poly_mat_pmbasis(nmod_poly_mat_t appbas,
                            slong * shift,
                            const nmod_poly_mat_t pmat,
                            slong order)
 {
-    if (order <= PMBASIS_THRES)
-    {
-        nmod_poly_mat_mbasis(appbas, shift, pmat, order);
-        return;
-    }
-
-    const long order1 = order>>1;
-    const long order2 = order - order1;
-    nmod_poly_mat_t appbas2, residual;
-
-    nmod_poly_mat_init(appbas2, pmat->r, pmat->r, pmat->modulus);
-    nmod_poly_mat_init(residual, pmat->r, pmat->c, pmat->modulus);
-
-    nmod_poly_mat_pmbasis_old(appbas, shift, pmat, order1);
-
-    nmod_poly_mat_middle_product_naive_old(residual, appbas, pmat, order1, order2-1);
-
-    nmod_poly_mat_pmbasis_old(appbas2, shift, residual, order2);
-
-    nmod_poly_mat_mul(appbas, appbas2, appbas);
-
-    nmod_poly_mat_clear(appbas2);
-    nmod_poly_mat_clear(residual);
-}
-
-void nmod_poly_mat_pmbasis(nmod_poly_mat_t appbas,
-                           slong * shift,
-                           const nmod_poly_mat_t ipmat,
-                           slong order)
-{
-
-    nmod_poly_mat_t pmat;
-
-    nmod_poly_mat_init(pmat, ipmat->r, ipmat->c, ipmat->modulus);
-    nmod_poly_mat_set_trunc(pmat,ipmat,order);
-
     if (order <= PMBASIS_THRES)
     {
         nmod_poly_mat_mbasis(appbas, shift, pmat, order);
@@ -95,60 +59,3 @@ void nmod_poly_mat_pmbasis(nmod_poly_mat_t appbas,
     nmod_poly_mat_clear(appbas2);
     nmod_poly_mat_clear(residual);
 }
-
-
-/** nmod_poly_mat_pmbasis strategy using geometric multiplications instead 
- *   and linearization for the residual computation 
- * 
- *  todo: check using 'if (order <= (ipmat->r))' instead 
- *           improves things for large example 
- * 
- *  todo: tune the test for switching to mbasis 
- * 
- *  todo ASSUMPTION (not checked): existence of element of "large enough" order
- *           and fail flag when element not found 
- * 
- */
-
-void nmod_poly_mat_pmbasis_linearized(nmod_poly_mat_t appbas,
-                           slong * shift,
-                           const nmod_poly_mat_t ipmat,
-                           slong order)
-{
-    nmod_poly_mat_t pmat;
-
-    nmod_poly_mat_init(pmat, ipmat->r, ipmat->c, ipmat->modulus);
-    nmod_poly_mat_set_trunc(pmat,ipmat,order);
-
-    if (order <= (ipmat->r))    
-    {
-        nmod_poly_mat_mbasis(appbas, shift, pmat, order);
-        return;
-    }
-
-    const long order1 = order>>1;
-    const long order2 = order - order1;
-    nmod_poly_mat_t appbas2, residual;
-
-    nmod_poly_mat_init(appbas2, pmat->r, pmat->r, pmat->modulus);
-    nmod_poly_mat_init(residual, pmat->r, pmat->c, pmat->modulus);
-
-    nmod_poly_mat_pmbasis_linearized(appbas, shift, pmat, order1);
-
-    nmod_poly_mat_mulmid_linearized(residual, appbas, pmat, order1, order);
-
-    nmod_poly_mat_pmbasis_linearized(appbas2, shift, residual, order2);
-
-    nmod_poly_mat_mul_geometric(appbas, appbas2, appbas);
-
-    nmod_poly_mat_clear(appbas2);
-    nmod_poly_mat_clear(residual);
-}
-
-
-
-
-
-
-
-
