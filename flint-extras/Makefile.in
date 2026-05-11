@@ -182,8 +182,9 @@ HEADER_DIRS :=                                                              \
         nmod_poly_extra                                                     \
         nmod_poly_mat_extra                                                 \
         nmod_vec_extra                                                      \
-        sagemath_extra                                                     
-
+        sagemath_extra                                                      \
+        gfun
+        
 ifeq ($(WANT_MAPLE),1)
         HEADER_DIRS += mapml
 endif
