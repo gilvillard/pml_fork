@@ -183,6 +183,8 @@ void nmod_biv_resultant_geometric(nmod_poly_t Delta, nmod_poly_mat_t  iPyT, cons
  * 
  *   The memainder is known - in advance - to be a polynomial of x-degree at most D
  *    the geometric progression is driven by D
+ * 
+ *   To see: aliasing?
  */
 
 void nmod_biv_mulmod_geometric(nmod_poly_mat_t  RT, const nmod_poly_mat_t AT, const nmod_poly_mat_t BT, \
@@ -328,6 +330,8 @@ void nmod_biv_mulmod_geometric(nmod_poly_mat_t  RT, const nmod_poly_mat_t AT, co
  *   The result is known - in advance - to be a polynomial of x-degree at most D
  *    the geometric progression is driven by D
  * 
+ *   To see: aliasing?
+ * 
  */
 
 void nmod_apply_T(nmod_poly_mat_t  RT, const nmod_poly_mat_t AT, const nmod_poly_mat_t CT, \
@@ -460,6 +464,127 @@ void nmod_phi_T(nmod_poly_t  phi1, nmod_poly_t  phi2, const nmod_poly_mat_t CT, 
 
 
 
+/**  Computation of the numerators of the pseudo-Krylov matrix
+ *     an r x n polynomial matrix 
+ * 
+ *    fraction-free approach 
+ *   uses phi1 as computed previously, non monic since directly related to the resultant (non monic either) 
+ */ 
+
+// !!! g   pas K --> n 
+
+void nmod_pseudo_Krylov(mod_poly_mat_t K, const ulong n, onst nmod_poly_mat_t CT, \
+                        const nmod_poly_mat_t PT, const nmod_poly_t  phi1)
+{
+
+
+    int i,k;
+
+    slong r = (PT->r)-1;
+
+    slong d;
+    d = nmod_poly_mat_degree(PT);
+
+
+    nmod_poly_mat_t  tempN; // for calling ffT 
+    nmod_poly_mat_init(tempN,r,1,prime);
+
+    nmod_poly_mat_t  temp; 
+    nmod_poly_mat_init(temp,r,1,prime);
+
+
+    nmod_poly_t p1,p2;
+    nmod_poly_init(p1,prime);
+    nmod_poly_init(p2,prime);
+
+    nmod_poly_t dphi;
+    nmod_poly_init(dphi,prime);
+    nmod_poly_derivative(dphi,phi1);
+
+    slong deg_phi;
+    deg_phi=nmod_poly_degree(phi1);
+
+    /** First column y 
+     */
+    for (i=0; i<r; i++)
+    {
+         nmod_poly_zero(nmod_poly_mat_entry(K, i, 0));
+    }
+    nmod_poly_set_coeff_ui(nmod_poly_mat_entry(K, 1, 0), 0, 1);
+
+
+    /** Main loop, for the n-1 new colmuns of K
+     *  ---------------------------------------
+     */
+
+    slong D=0;
+
+    for (int k=0; k<n-1; k++)
+    {
+
+
+        for (i=0; i<r; i++)
+        {
+            nmod_poly_set(nmod_poly_mat_entry(tempN, i, 0),nmod_poly_mat_entry(K, i, k));
+        }
+
+
+        /** TO CHECK
+         *  ********
+         * 
+         *  we add the degree (2r-2)d + (d-1) = (2r-1)d -1 for M^* and Y  (temporarily) 
+         *    when we apply T, thus (2r-1)d is ok and bounds the x-degree of the resultant 
+         *  and then, afterwards, we will recover the degree of phi1 
+         * 
+         */
+
+        D = k*deg_phi + (2*r-1)*d -1; 
+
+        nmod_apply_T(temp, tempN, CT, PT, D);
+
+    
+
+     for (i=0; i<r; i++)
+     {
+
+        // flint_printf("\n temp i: %d\n",i);
+        // nmod_poly_print_pretty(nmod_poly_mat_entry(temp, i, 0),"x");
+        // flint_printf("\n ");
+
+
+        nmod_poly_div(nmod_poly_mat_entry(NA, i, k+1),nmod_poly_mat_entry(temp, i, 0),g);
+
+        // flint_printf("\n i: %d\n",i);
+        // nmod_poly_print_pretty(nmod_poly_mat_entry(NA, i, k+1),"x");
+        // flint_printf("\n ");
+
+        nmod_poly_derivative(p1,nmod_poly_mat_entry(NA, i, k));
+        nmod_poly_mul(p1,p1,phi);
+
+
+        nmod_poly_mul(p2,dphi,nmod_poly_mat_entry(NA, i, k));
+        nmod_poly_scalar_mul_nmod(p2,p2,k);
+
+        nmod_poly_add(nmod_poly_mat_entry(NA, i, k+1),nmod_poly_mat_entry(NA, i, k+1),p1);
+
+        nmod_poly_sub(nmod_poly_mat_entry(NA, i, k+1),nmod_poly_mat_entry(NA, i, k+1),p2);
+    }
+
+    t += (double)(clock()-tt) / CLOCKS_PER_SEC;
+
+    flint_printf("\n Loop %d   %.3f sec.\n", k,t);
+
+
+    }      
+
+
+    t=0.0;
+    tt=clock();
+
+    for (i=0; i<r; i++)
+    {
+        flint_printf("\n %ld ", nmod_poly_degree(nmod_poly_mat_entry(NA, i, K-1)));
+    } 
 
 
 
