@@ -75,11 +75,11 @@ void nmod_poly_mat_mulmid_linearized(nmod_poly_mat_t C, const nmod_poly_mat_t A,
 /** Middle product for polynomial matrices
  *  sets C = ((A * B) div x^dA) mod x^(dB+1)
  *  output can alias input
- *  ASSUME: len(A) <= nlo and len(B) <= nhi
+ *  ASSUME: len(A) <= nlo and len(B) <= nhi ( TODO really ? )
  *  ASSUME: existence of primitive root ( TODO replace by check!)
  *  uses geometric evaluation and interpolation
  */
-void nmod_poly_mat_middle_product_geometric(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B, slong nlo, slong nhi)
+void nmod_poly_mat_mulmid_geometric(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B, slong nlo, slong nhi)
 {
     const slong m = A->r;
     const slong k = A->c;
@@ -95,7 +95,7 @@ void nmod_poly_mat_middle_product_geometric(nmod_poly_mat_t C, const nmod_poly_m
     {
         nmod_poly_mat_t T;
         nmod_poly_mat_init(T, m, n, C->modulus);
-        nmod_poly_mat_middle_product_geometric(T, A, B, nlo, nhi);
+        nmod_poly_mat_mulmid_geometric(T, A, B, nlo, nhi);
         nmod_poly_mat_swap_entrywise(C, T);
         nmod_poly_mat_clear(T);
         return;
