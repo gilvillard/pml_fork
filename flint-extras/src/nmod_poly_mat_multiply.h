@@ -153,7 +153,7 @@ void nmod_poly_mat_middle_product_3_primes(nmod_poly_mat_t C, const nmod_poly_ma
  *  \todo currently test fails
  */
 void nmod_poly_mat_middle_product_geometric(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B,
-                                            const ulong dA, const ulong dB);
+                                            slong nlo, slong nhi);
 
 
 /** Middle product for polynomial matrices
