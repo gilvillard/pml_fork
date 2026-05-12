@@ -11,6 +11,8 @@
     <https://www.gnu.org/licenses/>.
 */
 
+#include <stdlib.h>
+#include <time.h>
 
 #include <flint/fmpz_poly.h>
 #include <flint/fmpq.h>
@@ -75,7 +77,7 @@ void nmod_biv_resultant_geometric(nmod_poly_t Delta, nmod_poly_mat_t  iPyT, cons
     slong d;
     d = nmod_poly_mat_degree(PT);
 
-    // Bound on the degree of the resultant 
+    // Bound on the degree of the resultant + 1
     L = (2*r-1)*d+1;  
     nmod_init(&mod, prime);
 
@@ -179,7 +181,7 @@ void nmod_biv_resultant_geometric(nmod_poly_t Delta, nmod_poly_mat_t  iPyT, cons
 /** Geometric bivariate multiplication A*B mod P, with respect to y 
  *    the geometric progression is initialized outside
  * 
- *   The memainder is known - in advance - to be a polynomial of x-degree D
+ *   The memainder is known - in advance - to be a polynomial of x-degree at most D
  *    the geometric progression is driven by D
  */
 
@@ -317,6 +319,146 @@ void nmod_biv_mulmod_geometric(nmod_poly_mat_t  RT, const nmod_poly_mat_t AT, co
         nmod_poly_interpolate_geometric_nmod_vec_fast_precomp(nmod_poly_mat_entry(RT, j, 0), tvals, F, L);
     }
 }
+
+
+
+/** Linear transformation T for algeqtodiffeq 
+ *   CT is C = -Px (Py)^(-1) that has been precomputed 
+ * 
+ *   The result is known - in advance - to be a polynomial of x-degree at most D
+ *    the geometric progression is driven by D
+ * 
+ */
+
+void nmod_apply_T(nmod_poly_mat_t  RT, const nmod_poly_mat_t AT, const nmod_poly_mat_t CT, \
+                     const nmod_poly_mat_t PT, const ulong D)
+{
+    ulong prime;
+    prime = nmod_poly_mat_modulus(PT);
+
+    slong ra = AT->r;
+   
+    nmod_poly_mat_t  DAT;
+    nmod_poly_mat_init(DAT,ra,1,prime);
+
+     // Diff A 
+    for (int i=0; i<ra-1; i++)
+    {
+        nmod_poly_scalar_mul_nmod(nmod_poly_mat_entry(DAT, i, 0),nmod_poly_mat_entry(AT, i+1, 0),i+1);
+    }
+    nmod_poly_zero(nmod_poly_mat_entry(DAT, ra-1, 0)); 
+
+    nmod_biv_mulmod_geometric(RT, DAT, CT, PT, D); 
+
+}
+
+
+/**  Randomized Computation of phi_1 and phi_2
+ *   -----------------------------------------
+ * 
+ *    Warning: not made monic 
+ * 
+ *    The row dimension of PT must be the y-degree of P, exactly 
+ * 
+ *    using two random constant combinations of the column of T 
+ *    (r >= 2 for phi2) 
+ * 
+ *    To see: first colmun zero is a particular case ?
+ * 
+ */
+
+void nmod_phi_T(nmod_poly_t  phi1, nmod_poly_t  phi2, const nmod_poly_mat_t CT, \
+                     const nmod_poly_mat_t PT, const nmod_poly_t Delta)
+{
+
+    ulong prime;
+    prime = nmod_poly_mat_modulus(PT);
+
+    slong r = (PT->r)-1;
+
+    slong d;
+    d = nmod_poly_mat_degree(PT);
+
+    /** Bound on the output degree 
+     *   using constant random column projections  
+     */
+
+    slong D = (2*r-1)*d -1; // M^* and Y  (2r-2)d + (d-1)  
+
+    flint_rand_t state;
+    flint_rand_init(state);
+    srand(time(NULL));
+    flint_rand_set_seed(state, rand(), rand());
+
+
+    nmod_poly_mat_t randT1, randT2;
+    nmod_poly_mat_init(randT1,r,1,prime);
+    nmod_poly_mat_init(randT2,r,1,prime);
+
+    // Better than randtest matrix to be sure to have nonzero entries / Check nonzero ? 
+    for (int i=0; i<r; i++)
+    {
+        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT1, i, 0), 0, n_randtest(state) % prime);
+        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT2, i, 0), 0, n_randtest(state) % prime); 
+    }
+
+   
+    nmod_poly_mat_t  colT1,colT2;
+    nmod_poly_mat_init(colT1,r,1,prime);
+    nmod_poly_mat_init(colT2,r,1,prime);
+
+
+    nmod_apply_T(colT1, randT1, CT, PT, D); 
+    nmod_apply_T(colT2, randT2, CT, PT, D); 
+
+    nmod_poly_t g;
+    nmod_poly_init(g,prime); // re-used below 
+
+    nmod_poly_gcd_hgcd(g, nmod_poly_mat_entry(colT1, 0, 0), Delta);
+
+    for (int i=1; i<r; i++)
+    {
+        nmod_poly_gcd_hgcd(g, g, nmod_poly_mat_entry(colT1, i, 0));
+    }
+
+    nmod_poly_div(phi1,Delta,g);
+
+
+    /** Random row projections for phi2
+     *   use matrices for potential generalizations 
+     */    
+
+    nmod_poly_mat_t randU;
+    nmod_poly_mat_init(randU,2,r,prime);
+    // Check nonzero ? 
+    for (int i=0; i<r; i++)
+    {
+        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randU, 0, i), 0, n_randtest(state) % prime);
+        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randU, 1, i), 0, n_randtest(state) % prime); 
+    }
+
+    nmod_poly_mat_t P1,P2;
+    nmod_poly_mat_init(P1,2,1,prime);
+    nmod_poly_mat_init(P2,2,1,prime);
+
+    nmod_poly_mat_mul(P1,randU,colT1);
+    nmod_poly_mat_mul(P2,randU,colT2);
+
+    nmod_poly_t tp1,tp2;
+    nmod_poly_init(tp1,prime); 
+    nmod_poly_init(tp2,prime); 
+
+    nmod_poly_mul(tp1,nmod_poly_mat_entry(P1, 0, 0),nmod_poly_mat_entry(P2, 1, 0));
+    nmod_poly_mul(tp2,nmod_poly_mat_entry(P1, 1, 0),nmod_poly_mat_entry(P2, 0, 0));
+    nmod_poly_sub(tp1,tp1,tp2);
+
+    nmod_poly_div(tp1,tp1,Delta);
+    nmod_poly_gcd_hgcd(g, tp1, Delta);
+    nmod_poly_div(phi2,Delta,g);   
+}
+
+
+
 
 
 
