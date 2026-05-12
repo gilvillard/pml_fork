@@ -18,57 +18,55 @@
 #include "nmod_extra.h"
 #include "nmod_poly_mat_multiply.h"
 
-/** Middle product for polynomial matrices
- *  sets C = ((A * B) div x^dA) mod x^(dB+1), assuming deg(A) <= dA and deg(B) <= dA + dB
- *  output can alias input
- *  naive implementation (multiply, shift, truncate)
- */
-void nmod_poly_mat_middle_product_naive(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B,
-                                        const ulong dA, const ulong dB)
-{
-    nmod_poly_mat_mul(C, A, B);
-    nmod_poly_mat_shift_right(C, C, dA);
-    nmod_poly_mat_truncate(C, dB + 1);
-}
-
-/** Middle product for polynomial matrices
- *  
- *  sets C to the first nhi - nlo middle coefficients of the product of A of
+/** sets C to the first nhi - nlo middle coefficients of the product of A of
  *  length len1 and B of length len2 starting at offset nlo
- 
- * 
- *  todo: rewrite if aliasing ok with nmod_poly_mat_shift_right and others 
- * 
- *  todo: threshold for use of linearization 
- * 
- *  uses geometric multiplication 
- *  
- *  Todo ASSUMPTION (not checked): existence of element of "large enough" order
- *           and fail flag when element not found 
  */
-void nmod_poly_mat_mulmid_linearized(nmod_poly_mat_t C, const nmod_poly_mat_t A,\
-                                         const nmod_poly_mat_t B, const ulong nlo, const ulong nhi)
+void nmod_poly_mat_mulmid_naive(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B,
+                                slong nlo, slong nhi)
 {
-    slong degA;
-    degA=nmod_poly_mat_degree(A);
-    
-    nmod_poly_mat_t BT;
-    nmod_poly_mat_init(BT, A->c, B->c, B->modulus);
-    nmod_poly_mat_shift_right(BT, B, nlo-degA); // No aliasing specified for that?
+    PML_ASSERT(nlo >= 0);
+    PML_ASSERT(nhi >= 0);
 
-    if (degA < 4)
+    slong lenA = nmod_poly_mat_max_length(A);
+    slong lenB = nmod_poly_mat_max_length(B);
+    nhi = FLINT_MIN(nhi, lenA + lenB - 1);
+
+    if (lenA == 0 || lenB == 0 || nlo >= nhi)
     {
-        nmod_poly_mat_mul(C,A,BT);  
-    }
-    else
-    {
-        nmod_poly_mat_mul_linearized(C,A,BT); 
+        nmod_poly_mat_zero(C);
+        return;
     }
 
-    nmod_poly_mat_shift_right(C, C, degA);  
-    nmod_poly_mat_truncate(C, nhi-nlo);
+    if (lenA <= lenB && lenA <= nlo)
+    {
+        nmod_poly_mat_t B_tmp;
+        nmod_poly_mat_init(B_tmp, B->r, B->c, B->modulus);
+        nmod_poly_mat_shift_right(B_tmp, B, nlo - lenA + 1);
+        nmod_poly_mat_mul(C, A, B_tmp);
+        nmod_poly_mat_clear(B_tmp);
+        /* TODO add function for combined shift+truncate? */
+        nmod_poly_mat_shift_right(C, C, lenA - 1);
+        nmod_poly_mat_truncate(C, nhi - nlo);
+        return;
+    }
 
-    nmod_poly_mat_clear(BT);
+    if (lenB <= lenA && lenB <= nlo)
+    {
+        nmod_poly_mat_t A_tmp;
+        nmod_poly_mat_init(A_tmp, A->r, A->c, A->modulus);
+        nmod_poly_mat_shift_right(A_tmp, A, nlo - lenB + 1);
+        nmod_poly_mat_mul(C, A_tmp, B);
+        nmod_poly_mat_clear(A_tmp);
+        /* TODO add function for combined shift+truncate? */
+        nmod_poly_mat_shift_right(C, C, lenB - 1);
+        nmod_poly_mat_truncate(C, nhi - nlo);
+        return;
+    }
+
+    nmod_poly_mat_mul(C, A, B);
+    /* TODO add function for combined shift+truncate? */
+    nmod_poly_mat_shift_right(C, C, nlo);
+    nmod_poly_mat_truncate(C, nhi - nlo);
 }
 
 
@@ -79,7 +77,8 @@ void nmod_poly_mat_mulmid_linearized(nmod_poly_mat_t C, const nmod_poly_mat_t A,
  *  ASSUME: existence of primitive root ( TODO replace by check!)
  *  uses geometric evaluation and interpolation
  */
-void nmod_poly_mat_mulmid_geometric(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B, slong nlo, slong nhi)
+void nmod_poly_mat_mulmid_geometric(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B,
+                                    slong nlo, slong nhi)
 {
     const slong m = A->r;
     const slong k = A->c;
