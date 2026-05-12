@@ -36,11 +36,39 @@ void nmod_biv_resultant_geometric(nmod_poly_t Delta, nmod_poly_mat_t  iPyT, cons
  * 
  *   The memainder is known - in advance - to be a polynomial 
  *    the geometric progression is driven, in particular, by its x-degree 
+ * 
+ *   To see: aliasing ?
+ * 
  */
 
 void nmod_biv_mulmod_geometric(nmod_poly_mat_t  RT, const nmod_poly_mat_t AT, const nmod_poly_mat_t BT, \
                                 const nmod_poly_mat_t PT,  const ulong D);
                     
+
+
+/** Linear transformation T for algeqtodiffeq 
+ *   CT is C = -Px (Py)^(-1) that has been precomputed 
+ * 
+ *   The result is known - in advance - to be a polynomial of x-degree at most D
+ *    the geometric progression is driven by D
+ * 
+ */
+
+void nmod_apply_T(nmod_poly_mat_t  RT, const nmod_poly_mat_t AT, const nmod_poly_mat_t CT, \
+                     const nmod_poly_mat_t PT, const ulong D);
+
+
+/**  Randomized Computation of phi_1 and phi_2
+ *   -----------------------------------------
+ * 
+ *    using two random constant combinations of the column of T 
+ * 
+ *    r is assumed >= 3 for phi2 ? 
+ * 
+ */
+
+void nmod_phi_T(nmod_poly_t  phi1, nmod_poly_t  phi2, const nmod_poly_mat_t CT, \
+                     const nmod_poly_mat_t PT, const nmod_poly_t Delta);
 
 
 #endif // GFUN_H
