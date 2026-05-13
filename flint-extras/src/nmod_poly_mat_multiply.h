@@ -87,10 +87,14 @@ void nmod_poly_mat_mul_linearized(nmod_poly_mat_t C, const nmod_poly_mat_t A, co
 
 
 /** Middle product for polynomial matrices
- *  sets C = ((A * B) div x^dA) mod x^(dB+1), assuming deg(A) <= dA and deg(B) <= dA + dB
+ *  Sets C = ((A * B mod x^nhi) div x^nlo)
+ *  i.e., sets C to the first nhi - nlo middle coefficients of the product of A
+ *  of length len1 and B of length len2 starting at offset nlo
+ *
  *  output can alias input
  *  naive implementation (multiply, shift, truncate)
  */
+<<<<<<< HEAD
 void nmod_poly_mat_middle_product_naive_old(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B,
                                         const ulong dA, const ulong dB);
 
@@ -104,6 +108,37 @@ void nmod_poly_mat_middle_product_naive_old(nmod_poly_mat_t C, const nmod_poly_m
  */
 void nmod_poly_mat_middle_product_naive(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B,
                                         const ulong dA, const ulong dB);
+=======
+void nmod_poly_mat_mulmid(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B,
+                          slong nlo, slong nhi);
+void _nmod_poly_mat_mulmid(nmod_poly_mat_t C,
+                           const nmod_poly_mat_t A, slong lenA,
+                           const nmod_poly_mat_t B, slong lenB,
+                           slong nlo, slong nhi);
+void _nmod_poly_mat_mulmid_naive(nmod_poly_mat_t C,
+                                 const nmod_poly_mat_t A, slong lenA,
+                                 const nmod_poly_mat_t B, slong lenB,
+                                 slong nlo, slong nhi);
+void _nmod_poly_mat_mulmid_geometric(nmod_poly_mat_t C,
+                                     const nmod_poly_mat_t A, slong lenA,
+                                     const nmod_poly_mat_t B, slong lenB,
+                                     slong nlo, slong nhi);
+
+/* TODO remove */
+/** Middle product for polynomial matrices
+ *  sets C = ((A * B) div x^dA) mod x^(dB+1)
+ *  sets C = ((A * B) div x^nlo) mod x^(nhi - nlo)
+ *  -> nlo == dA, nhi == nlo+dB+1
+ *  output can alias input
+ *  ASSUME: deg(A) <= dA and deg(B) <= dA + dB
+ *  i.e., lenA <= nlo+1 and lenB <= nhi
+ *  ASSUME: existence of primitive root
+ *  uses geometric evaluation and interpolation
+ */
+/* void nmod_poly_mat_mulmid_geometric(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B, */
+/*                                             slong nlo, slong nhi); */
+
+>>>>>>> cd5af4d0 (organize mulmid)
 
 
 /** Middle product for polynomial matrices
@@ -144,23 +179,6 @@ void nmod_poly_mat_middle_product_3_primes(nmod_poly_mat_t C, const nmod_poly_ma
                                       const ulong dA, const ulong dB);
 #endif
 
-/** Middle product for polynomial matrices
- *  sets C = ((A * B) div x^dA) mod x^(dB+1)
- *  output can alias input
- *  ASSUME: deg(A) <= dA and deg(B) <= dA + dB
- *  ASSUME: existence of primitive root
- *  uses geometric evaluation and interpolation
- *  \todo currently test fails
- */
-<<<<<<< HEAD
-void nmod_poly_mat_middle_product_geometric(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B,
-=======
-/* TODO check correctness carefully */
-/* TODO unify prototype mulmid */
-void nmod_poly_mat_mulmid_geometric(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B,
->>>>>>> 669b01ad (move to mulmid | nlo | nhi)
-                                            slong nlo, slong nhi);
-
 
 /** Middle product for polynomial matrices
  *  sets C = ((A * B) div x^dA) mod x^(dB+1)
@@ -168,6 +186,8 @@ void nmod_poly_mat_mulmid_geometric(nmod_poly_mat_t C, const nmod_poly_mat_t A, 
  *  uses evaluation and interpolation at arithmetic points, done by matrix products
  *  ASSUME: large enough field 
  */
+/* TODO currently disabled */
+/* TODO unify prototype mulmid */
 void nmod_poly_mat_middle_product_vdm1(nmod_poly_mat_t C, const nmod_poly_mat_t A, const nmod_poly_mat_t B,
                                        const ulong dA, const ulong dB);
 
