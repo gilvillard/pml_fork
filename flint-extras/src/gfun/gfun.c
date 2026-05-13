@@ -473,8 +473,8 @@ void nmod_phi_T(nmod_poly_t  phi1, nmod_poly_t  phi2, const nmod_poly_mat_t CT, 
 
 // !!! g   pas K --> n 
 
-void nmod_pseudo_Krylov(mod_poly_mat_t K, const ulong n, onst nmod_poly_mat_t CT, \
-                        const nmod_poly_mat_t PT, const nmod_poly_t  phi1)
+void nmod_pseudo_Krylov(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t CT, \
+                        const nmod_poly_mat_t PT, const nmod_poly_t  phi1, const nmod_poly_t  Delta)
 {
 
 
@@ -484,6 +484,9 @@ void nmod_pseudo_Krylov(mod_poly_mat_t K, const ulong n, onst nmod_poly_mat_t CT
 
     slong d;
     d = nmod_poly_mat_degree(PT);
+
+    ulong prime;
+    prime = nmod_poly_mat_modulus(PT);
 
 
     nmod_poly_mat_t  tempN; // for calling ffT 
@@ -497,12 +500,16 @@ void nmod_pseudo_Krylov(mod_poly_mat_t K, const ulong n, onst nmod_poly_mat_t CT
     nmod_poly_init(p1,prime);
     nmod_poly_init(p2,prime);
 
-    nmod_poly_t dphi;
-    nmod_poly_init(dphi,prime);
-    nmod_poly_derivative(dphi,phi1);
+    nmod_poly_t dphi1;
+    nmod_poly_init(dphi1,prime);
+    nmod_poly_derivative(dphi1,phi1);
 
-    slong deg_phi;
-    deg_phi=nmod_poly_degree(phi1);
+    slong deg_phi1;
+    deg_phi1=nmod_poly_degree(phi1);
+
+    nmod_poly_t g;
+    nmod_poly_init(g,prime);
+    nmod_poly_div(g,Delta,phi1);
 
     /** First column y 
      */
@@ -533,63 +540,34 @@ void nmod_pseudo_Krylov(mod_poly_mat_t K, const ulong n, onst nmod_poly_mat_t CT
          *  ********
          * 
          *  we add the degree (2r-2)d + (d-1) = (2r-1)d -1 for M^* and Y  (temporarily) 
-         *    when we apply T, thus (2r-1)d is ok and bounds the x-degree of the resultant 
-         *  and then, afterwards, we will recover the degree of phi1 
+         *    when we apply T, (2r-1)d-1 is ok (bounds the x-degree of the resultant, btw)
+         *  and then, afterwards, we will recover the degree of phi1 by simplification
          * 
          */
 
-        D = k*deg_phi + (2*r-1)*d -1; 
+        D = k*deg_phi1 + (2*r-1)*d -1; 
 
         nmod_apply_T(temp, tempN, CT, PT, D);
 
-    
+        for (i=0; i<r; i++)
+        {
 
-     for (i=0; i<r; i++)
-     {
+            nmod_poly_div(nmod_poly_mat_entry(K, i, k+1), nmod_poly_mat_entry(temp, i, 0),g);
 
-        // flint_printf("\n temp i: %d\n",i);
-        // nmod_poly_print_pretty(nmod_poly_mat_entry(temp, i, 0),"x");
-        // flint_printf("\n ");
-
-
-        nmod_poly_div(nmod_poly_mat_entry(NA, i, k+1),nmod_poly_mat_entry(temp, i, 0),g);
-
-        // flint_printf("\n i: %d\n",i);
-        // nmod_poly_print_pretty(nmod_poly_mat_entry(NA, i, k+1),"x");
-        // flint_printf("\n ");
-
-        nmod_poly_derivative(p1,nmod_poly_mat_entry(NA, i, k));
-        nmod_poly_mul(p1,p1,phi);
+            nmod_poly_derivative(p1,nmod_poly_mat_entry(K, i, k));
+            nmod_poly_mul(p1,p1,phi1);
 
 
-        nmod_poly_mul(p2,dphi,nmod_poly_mat_entry(NA, i, k));
-        nmod_poly_scalar_mul_nmod(p2,p2,k);
+            nmod_poly_mul(p2,dphi1,nmod_poly_mat_entry(K, i, k));
+            nmod_poly_scalar_mul_nmod(p2,p2,k);
 
-        nmod_poly_add(nmod_poly_mat_entry(NA, i, k+1),nmod_poly_mat_entry(NA, i, k+1),p1);
+            nmod_poly_add(nmod_poly_mat_entry(K, i, k+1),nmod_poly_mat_entry(K, i, k+1),p1);
 
-        nmod_poly_sub(nmod_poly_mat_entry(NA, i, k+1),nmod_poly_mat_entry(NA, i, k+1),p2);
-    }
+            nmod_poly_sub(nmod_poly_mat_entry(K, i, k+1),nmod_poly_mat_entry(K, i, k+1),p2);
+        }
 
-    t += (double)(clock()-tt) / CLOCKS_PER_SEC;
-
-    flint_printf("\n Loop %d   %.3f sec.\n", k,t);
-
-
-    }      
-
-
-    t=0.0;
-    tt=clock();
-
-    for (i=0; i<r; i++)
-    {
-        flint_printf("\n %ld ", nmod_poly_degree(nmod_poly_mat_entry(NA, i, K-1)));
-    } 
-
-
-
-
-
+    } // main loop on the columns of K 
+}
 
 
 
