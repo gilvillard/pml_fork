@@ -52,6 +52,8 @@ void nmod_biv_mulmod_geometric(nmod_poly_mat_t  RT, const nmod_poly_mat_t AT, co
  *   The result is known - in advance - to be a polynomial of x-degree at most D
  *    the geometric progression is driven by D
  * 
+ *   To see: aliasing?
+ * 
  */
 
 void nmod_apply_T(nmod_poly_mat_t  RT, const nmod_poly_mat_t AT, const nmod_poly_mat_t CT, \
@@ -69,6 +71,17 @@ void nmod_apply_T(nmod_poly_mat_t  RT, const nmod_poly_mat_t AT, const nmod_poly
 
 void nmod_phi_T(nmod_poly_t  phi1, nmod_poly_t  phi2, const nmod_poly_mat_t CT, \
                      const nmod_poly_mat_t PT, const nmod_poly_t Delta);
+
+
+/**  Computation of the numerators of the pseudo-Krylov matrix
+ *     an r x n polynomial matrix 
+ * 
+ *    fraction-free approach 
+ *   uses phi1 as computed previously, non monic since directly related to the resultant (non monic either) 
+ */ 
+
+void nmod_pseudo_Krylov(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t CT, \
+                        const nmod_poly_mat_t PT, const nmod_poly_t  phi1, const nmod_poly_t  Delta);
 
 
 #endif // GFUN_H
