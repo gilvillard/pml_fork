@@ -467,11 +467,11 @@ void nmod_phi_T(nmod_poly_t  phi1, nmod_poly_t  phi2, const nmod_poly_mat_t CT, 
 /**  Computation of the numerators of the pseudo-Krylov matrix
  *     an r x n polynomial matrix 
  * 
+ *     central procedure 
+ * 
  *    fraction-free approach 
  *   uses phi1 as computed previously, non monic since directly related to the resultant (non monic either) 
  */ 
-
-// !!! g   pas K --> n 
 
 void nmod_pseudo_Krylov(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t CT, \
                         const nmod_poly_mat_t PT, const nmod_poly_t  phi1, const nmod_poly_t  Delta)
@@ -568,6 +568,142 @@ void nmod_pseudo_Krylov(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t 
 
     } // main loop on the columns of K 
 }
+
+
+/**  algeqtodiffeq 
+ * 
+ *   Fraction-free pseudo-Krylov matrix: full computation w.r.t. phi1
+ * 
+ *      at least k solutions, i.e. n = r+k
+ *   
+ *   returns nz, the number of solutions found 
+ * 
+ *   output: LT, (r+k) x (r+k) polynomial matrix whose nz first columns give 
+ *      the solutions
+ *    
+ */ 
+
+slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong k) 
+{
+
+    int i,j;
+
+    /**
+     *  Resultant and inverse of Py
+     *  ---------------------------
+     */
+
+    ulong prime;
+    prime = nmod_poly_mat_modulus(PT);
+
+    slong r = (PT->r)-1;
+
+    slong d=nmod_poly_mat_degree(PT);
+
+
+    nmod_poly_t Delta; 
+    nmod_poly_init(Delta,prime);
+
+    nmod_poly_mat_t iPyT;
+    nmod_poly_mat_init(iPyT,r,1,prime);
+
+    nmod_biv_resultant_geometric(Delta, iPyT, PT);
+
+
+    /** 
+     *  Starting for the pseudo-Krylov matrix 
+     *  -------------------------------------
+     */
+
+    nmod_poly_mat_t PxT;
+    nmod_poly_mat_init(PxT,r+1,1,prime);
+
+
+    // negation sign included 
+    for (i=0; i<r+1; i++)
+    {
+        nmod_poly_derivative(nmod_poly_mat_entry(PxT, i, 0),nmod_poly_mat_entry(PT, i, 0));
+        nmod_poly_scalar_mul_nmod(nmod_poly_mat_entry(PxT, i, 0),nmod_poly_mat_entry(PxT, i, 0),prime-1);
+    }
+
+
+    /** Precomputation of C = -Px (Py)^(-1)
+     *  -----------------------------------
+     */
+
+    ulong D;
+
+    D=(2*r-1)*d-1;   // M^* and Y  (2r-2)d + (d-1)
+
+    nmod_poly_mat_t  CT;
+    nmod_poly_mat_init(CT,r,1,prime);
+
+    nmod_biv_mulmod_geometric(CT, PxT, iPyT, PT, D); 
+
+
+    /**  Randomized Computation of phi_1 and phi_2 (non monic)
+     *   -----------------------------------------------------
+     */
+
+    nmod_poly_t phi1,phi2;
+    nmod_poly_init(phi1,prime);
+    nmod_poly_init(phi2,prime);
+
+
+    nmod_phi_T(phi1, phi2, CT, PT, Delta);
+
+     /**  Computation of the numerators of K w.r.t. phi1
+     *   -----------------------------------------------
+     */
+
+    slong n;
+    n=r+k;
+
+    nmod_poly_mat_t  K;
+    nmod_poly_mat_init(K,r,n,prime);
+
+    nmod_pseudo_Krylov(K, n, CT, PT, phi1, Delta);
+
+ 
+    /** Back to the trivial polynomial matrix 
+     *  -------------------------------------
+     */
+
+    nmod_poly_t tpol;
+    nmod_poly_init(tpol,prime);
+    nmod_poly_zero(tpol);
+    nmod_poly_set_coeff_ui(tpol,0,1);
+
+    for (j=n-2; j>=0; j--)
+    {
+        nmod_poly_mul(tpol,tpol,phi1); 
+
+        for (i=0; i<r; i++)
+        {
+            nmod_poly_mul(nmod_poly_mat_entry(K, i, j), nmod_poly_mat_entry(K, i, j), tpol);
+        } 
+    }
+
+    slong nz=0;
+
+    slong pivind[n];
+    slong shift[n];
+    for (j=0; j<n; j++)
+    {
+        shift[j]=0;
+    }
+
+
+    nz=nmod_poly_mat_kernel(LT, pivind, shift, K, ORD_WEAK_POPOV, COL_UPPER);
+
+    return nz; 
+
+}
+
+
+
+
+
 
 
 
