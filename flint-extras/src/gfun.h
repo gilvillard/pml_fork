@@ -84,4 +84,14 @@ void nmod_pseudo_Krylov(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t 
                         const nmod_poly_mat_t PT, const nmod_poly_t  phi1, const nmod_poly_t  Delta);
 
 
+/**  algeqtodiffeq 
+ * 
+ *   Fraction-free pseudo-Krylov matrix: full computation w.r.t. phi1
+ *    
+ */ 
+
+slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong k);
+
+
+
 #endif // GFUN_H
