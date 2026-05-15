@@ -13,6 +13,8 @@
 #ifndef GFUN_H
 #define GFUN_H
 
+#include <flint/fmpz_poly_mat.h>
+
 #include "nmod_poly_mat_extra.h"
 
 
@@ -94,4 +96,14 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
 
 
 
+void fmpz_poly_mat_print_pretty(const fmpz_poly_mat_t mat, const char * var);
+
+// One column
+void  fmpz_to_nmod_poly_mat(nmod_poly_mat_t PT, const fmpz_poly_mat_t PZT);
+
+// One column
+void  nmod_to_fmpz_poly_mat(fmpz_poly_mat_t PZT, const nmod_poly_mat_t PT);
+
+
 #endif // GFUN_H
+

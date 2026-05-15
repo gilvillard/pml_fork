@@ -17,6 +17,7 @@
 #include <flint/fmpz_poly.h>
 #include <flint/fmpq.h>
 #include <flint/nmod_mpoly.h>
+#include <flint/fmpz_poly_mat.h>
 
 #include "nmod_extra.h" // for nmod_find_root
 #include "nmod_poly_mat_extra.h"
@@ -700,6 +701,99 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
 
 }
 
+
+/*------------------------------------------------------------*/
+/*------------------------------------------------------------*/
+/* PRETTY PRINTING THE MATRIX                                 */
+/*------------------------------------------------------------*/
+/*------------------------------------------------------------*/
+
+void fmpz_poly_mat_print_pretty(const fmpz_poly_mat_t mat, const char * var)
+{
+    slong rdim = mat->r, cdim = mat->c;
+
+    flint_printf("<%wd x %wd matrix over Z[%s]>\n", mat->r, mat->c, var);
+    flint_printf("[");
+    for (slong i = 0; i < rdim; i++)
+    {
+        flint_printf("[");
+        for (slong j = 0; j < cdim; j++)
+        {
+            fmpz_poly_print_pretty(fmpz_poly_mat_entry(mat, i, j), var);
+            if (j+1 < cdim)
+                flint_printf(", ");
+        }
+        if (i != rdim -1)
+            flint_printf("],\n");
+        else
+            flint_printf("]");
+    }
+    flint_printf("]\n");
+}
+
+// One column
+void  fmpz_to_nmod_poly_mat(nmod_poly_mat_t PT, const fmpz_poly_mat_t PZT)
+{
+    ulong prime;
+    prime = nmod_poly_mat_modulus(PT);
+
+    slong r = (PT->r)-1;
+
+    fmpz_poly_t tpolZ;
+    fmpz_poly_init(tpolZ);
+
+    fmpz_t tZ;
+    fmpz_init(tZ);
+
+    nmod_t q; 
+    nmod_init(&q, prime);
+
+    slong d;
+
+    for (int i=0; i<r+1; i++)
+    {
+        nmod_poly_zero(nmod_poly_mat_entry(PT, i, 0));
+
+        fmpz_poly_set(tpolZ,fmpz_poly_mat_entry(PZT, i, 0));
+        d = fmpz_poly_degree(tpolZ);
+
+        for (int j=0; j<=d; j++)
+        {
+            fmpz_poly_get_coeff_fmpz(tZ,tpolZ,j);
+            nmod_poly_set_coeff_ui(nmod_poly_mat_entry(PT, i, 0), j,\
+                fmpz_get_nmod(tZ,q));
+        }
+    }
+}
+
+// One column
+void  nmod_to_fmpz_poly_mat(fmpz_poly_mat_t PZT, const nmod_poly_mat_t PT)
+{
+    ulong prime;
+    prime = nmod_poly_mat_modulus(PT);
+
+    slong r = (PT->r)-1;
+
+    slong d;
+
+    nmod_poly_t tpol;
+    nmod_poly_init(tpol,prime);
+
+    for (int i=0; i<r+1; i++)
+    {
+        fmpz_poly_zero(fmpz_poly_mat_entry(PZT, i, 0));
+
+        nmod_poly_set(tpol,nmod_poly_mat_entry(PT, i, 0));
+
+        d = nmod_poly_degree(tpol);
+
+        for (int j=0; j<=d; j++)
+        {
+            fmpz_poly_set_coeff_ui(fmpz_poly_mat_entry(PZT, i, 0), j,\
+                nmod_poly_get_coeff_ui(tpol,j));
+        }
+    }
+}
 
 
 
