@@ -207,7 +207,6 @@ void nmod_biv_mulmod_geometric(nmod_poly_mat_t  RT, const nmod_poly_mat_t AT, co
     w = nmod_find_root(2*L, mod);
     nmod_geometric_progression_init(F, w, L, mod);
 
-
     int i,j;
 
     slong r = PT->r;
@@ -477,8 +476,6 @@ void nmod_phi_T(nmod_poly_t  phi1, nmod_poly_t  phi2, const nmod_poly_mat_t CT, 
 void nmod_pseudo_Krylov(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t CT, \
                         const nmod_poly_mat_t PT, const nmod_poly_t  phi1, const nmod_poly_t  Delta)
 {
-
-
     int i,k;
 
     slong r = (PT->r)-1;
@@ -694,9 +691,8 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
         shift[j]=0;
     }
 
-
     nz=nmod_poly_mat_kernel(LT, pivind, shift, K, ORD_WEAK_POPOV, COL_UPPER);
-
+    
     return nz; 
 
 }
