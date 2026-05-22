@@ -10,117 +10,97 @@
     <https://www.gnu.org/licenses/>.
 */
 
+#include <flint/flint.h>
+#include <flint/ulong_extras.h>
 #include <flint/nmod_poly_mat.h>
 #include <flint/test_helpers.h>
 
-#include "nmod_poly_mat_utils.h" // for rand
 #include "nmod_poly_mat_multiply.h"
 
-/* int test_mat_mulmid_geometric(ulong prime, nmod_poly_mat_t A, nmod_poly_mat_t B, slong nlo, slong nhi) */
-/* { */
-/*     nmod_poly_mat_t C, D; */
-/*     nmod_poly_mat_init(C, A->r, B->c, prime); */
-/*     nmod_poly_mat_init(D, A->r, B->c, prime); */
-
-/*     /1* most naive way *1/ */
-/*     nmod_poly_mat_mul(C, A, B); */
-/*     nmod_poly_mat_shift_right(C, C, nlo); */
-/*     nmod_poly_mat_truncate(C, nhi - nlo); */
-
-/*     /1* mulmid_geometric *1/ */
-/*     nmod_poly_mat_mulmid_geometric(D, A, B, nlo, nhi); */
-
-/*     int res = nmod_poly_mat_equal(C, D); */
-    
-/*     nmod_poly_mat_clear(C); */
-/*     nmod_poly_mat_clear(D); */
-   
-/*     return res; */
-/* } */
-
-int test_mat_mulmid(ulong prime, nmod_poly_mat_t A, nmod_poly_mat_t B, slong nlo, slong nhi)
+int test_mat_mulmid(ulong prime, nmod_poly_mat_t pmat1, nmod_poly_mat_t pmat2, slong nlo, slong nhi)
 {
-    nmod_poly_mat_t C, D;
-    nmod_poly_mat_init(C, A->r, B->c, prime);
-    nmod_poly_mat_init(D, A->r, B->c, prime);
+    nmod_poly_mat_t res_true, res;
+    nmod_poly_mat_init(res_true, pmat1->r, pmat2->c, prime);
+    nmod_poly_mat_init(res, pmat1->r, pmat2->c, prime);
 
     /* most naive way */
-    flint_printf("preparing test\n");
     if (nlo >= nhi)
-        nmod_poly_mat_zero(C);
+        nmod_poly_mat_zero(res_true);
     else
     {
-        nmod_poly_mat_mul(C, A, B);
-        nmod_poly_mat_shift_right(C, C, nlo);
-        nmod_poly_mat_truncate(C, nhi - nlo);
+        nmod_poly_mat_mul(res_true, pmat1, pmat2);
+        nmod_poly_mat_shift_right(res_true, res_true, nlo);
+        nmod_poly_mat_truncate(res_true, nhi - nlo);
     }
 
-    /* mulmid_naive */
-    flint_printf("compute\n");
-    nmod_poly_mat_mulmid(D, A, B, nlo, nhi);
+    /* mulmid */
+    nmod_poly_mat_mulmid(res, pmat1, pmat2, nlo, nhi);
 
-    flint_printf("test equal\n");
-    int res = nmod_poly_mat_equal(C, D);
-    
-    nmod_poly_mat_clear(C);
-    nmod_poly_mat_clear(D);
-   
-    return res;
+    int check = nmod_poly_mat_equal(res_true, res);
+
+    nmod_poly_mat_clear(res_true);
+    nmod_poly_mat_clear(res);
+
+    return check;
 }
 
 TEST_FUNCTION_START(nmod_poly_mat_mulmid, state)
 {
     int i, result;
 
-    for (i = 0; i < 100 * flint_test_multiplier(); i++)
+    for (i = 0; i < 300 * flint_test_multiplier(); i++)
     {
-        /* TODO geometric variant supposed to fail if no suitable geometric
-         * progression.. (i.e., if field too small) -> make test more robust */
-        ulong bits = 16 + n_randint(state, 49);
+        ulong bits = 2 + n_randint(state, 63);
         ulong prime = n_randprime(state, bits, 1);
 
-        ulong m = 1 + n_randint(state, 20);
-        ulong n = 1 + n_randint(state, 20);
-        ulong p = 1 + n_randint(state, 20);
+        ulong rdim = 1 + n_randint(state, 20);
+        ulong idim = 1 + n_randint(state, 20);
+        ulong cdim = 1 + n_randint(state, 20);
 
         /* constraints: */
-        slong lenA = n_randint(state, 40);
-        slong lenB = n_randint(state, 40);
-        slong nlo = n_randint(state, 80);
-        slong nhi = n_randint(state, 140);
+        slong len1, len2, nlo, nhi;
+        if (i < 100 * flint_test_multiplier())
+        {
+            /* tests on random parameters */
+            nlo = n_randint(state, 50);
+            nhi = n_randint(state, 100);
+            len1 = n_randint(state, 50);
+            len2 = n_randint(state, 50);
+        }
+        else if (i < 200 * flint_test_multiplier())
+        {
+            /* tests on "classical" parameters for transposed multiplication: */
+            /* nlo < nhi, len1 <= nlo+1, len2 <= nhi */
+            nlo = n_randint(state, 50);
+            nhi = nlo+1 + n_randint(state, 50);
+            len1 = n_randint(state, nlo+2);
+            len2 = n_randint(state, nhi+1);
+        }
+        else
+        {
+            /* same as above, permuted: len1 <= nhi, len2 <= nlo+1 */
+            nlo = n_randint(state, 50);
+            nhi = nlo+1 + n_randint(state, 50);
+            len1 = n_randint(state, nhi+1);
+            len2 = n_randint(state, nlo+2);
+        }
 
-        flint_printf("naive || prime = %wu, m = %wu, n = %wu, p = %wu\n"
-                     "bits = %wu, lenA = %wd, lenB = %wd, nlo = %wd, nhi = %wd\n",
-                     prime, m, n, p, bits, lenA, lenB, nlo, nhi);
+        nmod_poly_mat_t pmat1, pmat2;
+        nmod_poly_mat_init(pmat1, rdim, idim, prime);
+        nmod_poly_mat_randtest(pmat1, state, len1);
+        nmod_poly_mat_init(pmat2, idim, cdim, prime);
+        nmod_poly_mat_randtest(pmat2, state, len2);
 
-        nmod_poly_mat_t A, B;
-        nmod_poly_mat_init(A, m, n, prime);
-        if (lenA > 0)
-            nmod_poly_mat_rand(A, state, lenA);
-        nmod_poly_mat_init(B, n, p, prime);
-        if (lenB > 0)
-            nmod_poly_mat_rand(B, state, lenB);
-
-
-        flint_printf("let's go\n");
-        result = test_mat_mulmid(prime, A, B, nlo, nhi);
+        result = test_mat_mulmid(prime, pmat1, pmat2, nlo, nhi);
 
         if (!result)
             TEST_FUNCTION_FAIL(
-                    "naive || prime = %wu, m = %wu, n = %wu, p = %wu\n"
-                    "bits = %wu, lenA = %wd, lenB = %wd, nlo = %wd, nhi = %wd\n",
-                    prime, m, n, p, bits, lenA, lenB, nlo, nhi);
+                    "prime = %wu, rdim = %wu, idim = %wu, cdim = %wu\n"
+                    "bits = %wu, len1 = %wd, len2 = %wd, nlo = %wd, nhi = %wd\n",
+                    prime, rdim, idim, cdim, bits, len1, len2, nlo, nhi);
 
-        /* result = test_mat_mulmid_geometric(prime, A, B, nlo, nhi); */
-
-        /* if (!result) */
-        /*     TEST_FUNCTION_FAIL( */
-        /*             "geometric || prime = %wu, m = %wu, n = %wu, p = %wu\n" */
-        /*             "bits = %wu, lenA = %wd, lenB = %wd, nlo = %wd, nhi = %wd\n", */
-        /*             prime, m, n, p, bits, lenA, lenB, nlo, nhi); */
-
-        nmod_poly_mat_clear(A);
-        nmod_poly_mat_clear(B);
+        nmod_poly_mat_clear(pmat1);
+        nmod_poly_mat_clear(pmat2);
     }
 
     TEST_FUNCTION_END(state);
