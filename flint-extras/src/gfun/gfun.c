@@ -402,11 +402,14 @@ void nmod_phi_T(nmod_poly_t  phi1, nmod_poly_t  phi2, const nmod_poly_mat_t CT, 
     // Better than randtest matrix to be sure to have nonzero entries / Check nonzero ? 
     for (int i=0; i<r; i++)
     {
-        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT1, i, 0), 0, n_randtest(state) % prime);
-        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT2, i, 0), 0, n_randtest(state) % prime); 
+        //nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT1, i, 0), 0, n_randtest(state) % prime);
+        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT1, i, 0), 0, n_randbits(state,FLINT_BITS-2));
+
+        //nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT2, i, 0), 0, n_randtest(state) % prime); 
+        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT2, i, 0), 0, n_randbits(state,FLINT_BITS-2));
+
     }
 
-   
     nmod_poly_mat_t  colT1,colT2;
     nmod_poly_mat_init(colT1,r,1,prime);
     nmod_poly_mat_init(colT2,r,1,prime);
@@ -476,7 +479,7 @@ void nmod_phi_T(nmod_poly_t  phi1, nmod_poly_t  phi2, const nmod_poly_mat_t CT, 
 void nmod_pseudo_Krylov(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t CT, \
                         const nmod_poly_mat_t PT, const nmod_poly_t  phi1, const nmod_poly_t  Delta)
 {
-    int i,k;
+    int i;
 
     slong r = (PT->r)-1;
 
@@ -568,21 +571,21 @@ void nmod_pseudo_Krylov(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t 
 }
 
 
-/**  algeqtodiffeq 
+
+
+
+/**  Computation of the appropriate matrix for kernel solution 
  * 
- *   Fraction-free pseudo-Krylov matrix: full computation w.r.t. phi1
- * 
- *      at least k solutions, i.e. n = r+k
+ *    i.e. numerators of the pseudo-Krylov matrix
+ *     an r x n polynomial matrix 
+ *     with columns multiplied by an appropriate multiple of Delta (not phi1) 
+ *     for the moment  
  *   
- *   returns nz, the number of solutions found 
- * 
- *   output: LT, (r+k) x (r+k) polynomial matrix whose nz first columns give 
- *      the solutions
- *    
  */ 
 
-slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong k) 
+void nmod_pseudo_Krylov_for_kernel(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t PT) 
 {
+
 
     int i,j;
 
@@ -650,6 +653,144 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
 
     nmod_phi_T(phi1, phi2, CT, PT, Delta);
 
+    //flint_printf("\n deg phi1: %ld\n",nmod_poly_degree(phi1));
+
+    /** 
+     *   !!!! Version not using phi1
+     *   ---------------------------
+     */
+
+    nmod_poly_set(phi1,Delta);
+
+     /**  Computation of the numerators of K w.r.t. phi1
+     *   -----------------------------------------------
+     */
+
+    
+    nmod_pseudo_Krylov(K, n, CT, PT, phi1, Delta);
+    
+
+ 
+    /** Back to the trivial polynomial matrix 
+     *  -------------------------------------
+     */
+
+    nmod_poly_t tpol;
+    nmod_poly_init(tpol,prime);
+    nmod_poly_zero(tpol);
+    nmod_poly_set_coeff_ui(tpol,0,1);
+
+    for (j=n-2; j>=0; j--)
+    {
+        nmod_poly_mul(tpol,tpol,phi1); 
+
+        for (i=0; i<r; i++)
+        {
+            nmod_poly_mul(nmod_poly_mat_entry(K, i, j), nmod_poly_mat_entry(K, i, j), tpol);
+        } 
+    }
+
+
+}
+
+
+/**  algeqtodiffeq 
+ * 
+ *   Fraction-free pseudo-Krylov matrix: full computation w.r.t. phi1
+ * 
+ *      at least k solutions, i.e. n = r+k
+ *   
+ *   returns nz, the number of solutions found 
+ * 
+ *   output: LT, (r+k) x (r+k) polynomial matrix whose nz first columns give 
+ *      the solutions
+ * 
+ * 
+ *   !!!! Check using phi1 or not (simply Delta)
+ *   ===========================================
+ *    
+ */ 
+
+slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong k) 
+{
+
+    
+
+    int i,j;
+
+    /**
+     *  Resultant and inverse of Py
+     *  ---------------------------
+     */
+
+    ulong prime;
+    prime = nmod_poly_mat_modulus(PT);
+
+    slong r = (PT->r)-1;
+
+    slong d=nmod_poly_mat_degree(PT);
+
+
+    nmod_poly_t Delta; 
+    nmod_poly_init(Delta,prime);
+
+    nmod_poly_mat_t iPyT;
+    nmod_poly_mat_init(iPyT,r,1,prime);
+
+    nmod_biv_resultant_geometric(Delta, iPyT, PT);
+
+
+    /** 
+     *  Starting for the pseudo-Krylov matrix 
+     *  -------------------------------------
+     */
+
+    nmod_poly_mat_t PxT;
+    nmod_poly_mat_init(PxT,r+1,1,prime);
+
+
+    // negation sign included 
+    for (i=0; i<r+1; i++)
+    {
+        nmod_poly_derivative(nmod_poly_mat_entry(PxT, i, 0),nmod_poly_mat_entry(PT, i, 0));
+        nmod_poly_scalar_mul_nmod(nmod_poly_mat_entry(PxT, i, 0),nmod_poly_mat_entry(PxT, i, 0),prime-1);
+    }
+
+
+    /** Precomputation of C = -Px (Py)^(-1)
+     *  -----------------------------------
+     */
+
+    ulong D;
+
+    D=(2*r-1)*d-1;   // M^* and Y  (2r-2)d + (d-1)
+
+    nmod_poly_mat_t  CT;
+    nmod_poly_mat_init(CT,r,1,prime);
+
+    nmod_biv_mulmod_geometric(CT, PxT, iPyT, PT, D); 
+
+
+    /**  Randomized Computation of phi_1 and phi_2 (non monic)
+     *   -----------------------------------------------------
+     */
+
+    nmod_poly_t phi1,phi2;
+    nmod_poly_init(phi1,prime);
+    nmod_poly_init(phi2,prime);
+
+
+    nmod_phi_T(phi1, phi2, CT, PT, Delta);
+
+    flint_printf("\n deg phi1: %ld\n",nmod_poly_degree(phi1));
+
+    /** 
+     *   !!!! Version not using phi1
+     *   ---------------------------
+     */
+
+    nmod_poly_set(phi1,Delta);
+
      /**  Computation of the numerators of K w.r.t. phi1
      *   -----------------------------------------------
      */
@@ -660,7 +801,9 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
     nmod_poly_mat_t  K;
     nmod_poly_mat_init(K,r,n,prime);
 
+    
     nmod_pseudo_Krylov(K, n, CT, PT, phi1, Delta);
+    
 
  
     /** Back to the trivial polynomial matrix 
@@ -691,8 +834,21 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
         shift[j]=0;
     }
 
+
+    nmod_poly_mat_column_degree(pivind, K, shift);
+
+
+    flint_printf("\n %{slong*}\n", pivind, n);
+
+
+
+    double t=0.0;
+    clock_t tt;
+    tt=clock();
     nz=nmod_poly_mat_kernel(LT, pivind, shift, K, ORD_WEAK_POPOV, COL_UPPER);
-    
+    t += (double)(clock()-tt) / CLOCKS_PER_SEC;
+    flint_printf("\n Kernel: %.3f sec.\n", t);
+
     return nz; 
 
 }
@@ -726,6 +882,30 @@ void fmpz_poly_mat_print_pretty(const fmpz_poly_mat_t mat, const char * var)
     }
     flint_printf("]\n");
 }
+
+void fmpz_poly_mat_fprint_pretty(FILE *file, const fmpz_poly_mat_t mat, const char * var)
+{
+    slong rdim = mat->r, cdim = mat->c;
+
+    flint_fprintf(file,"[");
+    for (slong i = 0; i < rdim; i++)
+    {
+        flint_fprintf(file,"[");
+        for (slong j = 0; j < cdim; j++)
+        {
+            fmpz_poly_fprint_pretty(file,fmpz_poly_mat_entry(mat, i, j), var);
+            if (j+1 < cdim)
+                flint_fprintf(file,", ");
+        }
+        if (i != rdim -1)
+            flint_fprintf(file,"],\n");
+        else
+            flint_fprintf(file,"]");
+    }
+    flint_fprintf(file,"]");
+}
+
+
 
 // One column
 void  fmpz_to_nmod_poly_mat(nmod_poly_mat_t PT, const fmpz_poly_mat_t PZT)
@@ -790,6 +970,147 @@ void  nmod_to_fmpz_poly_mat(fmpz_poly_mat_t PZT, const nmod_poly_mat_t PT)
         }
     }
 }
+
+
+
+/** CRT for Krylov polynomial matrix ready for kernel
+ * 
+ *  return M 
+ *   and found 
+ * 
+ *   fixed number of primes 
+ * 
+ */
+
+void CRT_pseudo_Krylov_for_kernel(fmpz_poly_mat_t int_residues, slong * degs, const ulong n, const slong L, const nn_ptr primes,\
+                                    fmpz_poly_mat_t  PZT)
+{
+
+
+    slong r = (PZT->r)-1;
+   
+    nmod_poly_mat_t PT;
+
+    nmod_poly_mat_t Kmod[L];
+
+    nn_ptr residues;
+    residues = _nmod_vec_init(L);
+
+    fmpz_comb_t comb;
+    fmpz_comb_temp_t ctemp;
+
+    fmpz_t M;
+    fmpz_init(M);
+
+
+    for (int k=0; k < L; k++) 
+    {
+
+        nmod_poly_mat_init(Kmod[k], r, n, primes[k]);
+
+        nmod_poly_mat_init(PT,r+1,1,primes[k]);
+
+        fmpz_to_nmod_poly_mat(PT,PZT);
+
+        nmod_pseudo_Krylov_for_kernel(Kmod[k], n, PT); 
+
+        for (int ri=0; ri < r; ri++)
+        {
+            for (int cj=0; cj < n; cj++)
+            {
+    
+                if (k==0)
+                {
+                    degs[ri*n+cj] = nmod_poly_degree(nmod_poly_mat_entry(Kmod[k], ri, cj));
+
+                }
+
+                for (int l=0; l<degs[ri*n+cj]+1; l++)
+                {
+                    for (int i=0; i<=k; i++)
+                    {
+                        residues[i] = nmod_poly_get_coeff_ui(nmod_poly_mat_entry(Kmod[i],ri,cj),l);
+                    }
+
+                    fmpz_comb_init(comb,primes,k+1);
+                    fmpz_comb_temp_init(ctemp,comb);
+
+                    fmpz_multi_CRT_ui(M, residues, comb, ctemp, 1);
+
+                    fmpz_poly_set_coeff_fmpz(fmpz_poly_mat_entry(int_residues,ri,cj),l,M);
+
+                } // loop on the coefficients l 
+            } // loop on the columns cj 
+        } // loop on the rows ri 
+    } //loop on the primes k
+
+    flint_printf("\n %{slong*}\n", degs, n*r);
+
+    _nmod_vec_clear(residues);
+    fmpz_clear(M);
+    for (int k=0; k < L; k++) 
+    {
+        nmod_poly_mat_clear(Kmod[k]);
+    }
+    nmod_poly_mat_clear(PT);
+    fmpz_comb_clear(comb);
+    fmpz_comb_temp_clear(ctemp);
+
+}
+
+
+
+void CRT_poly_mat_combine(fmpz_poly_mat_t int_residues, slong * degs,\
+                            const fmpz_poly_mat_t int_residues_1, const fmpz_t P_1,\
+                            const fmpz_poly_mat_t int_residues_2, const fmpz_t P_2)
+{
+
+
+    slong r = (int_residues_1 -> r);
+
+    slong n = (int_residues_1 -> c);
+
+
+    
+    fmpz_t M;
+    fmpz_init(M);
+
+    fmpz_t M_1;
+    fmpz_init(M_1);
+    
+    fmpz_t M_2;
+    fmpz_init(M_2);
+
+
+    for (int ri=0; ri < r; ri++)
+    {
+        for (int cj=0; cj < n; cj++)
+        {
+                for (int l=0; l<degs[ri*n+cj]+1; l++)
+                {
+
+                    fmpz_poly_get_coeff_fmpz(M_1, fmpz_poly_mat_entry(int_residues_1,ri,cj), l);
+                    fmpz_poly_get_coeff_fmpz(M_2, fmpz_poly_mat_entry(int_residues_2,ri,cj), l);
+
+                    fmpz_CRT(M, M_1, P_1, M_2, P_2, 1);
+
+                    fmpz_poly_set_coeff_fmpz(fmpz_poly_mat_entry(int_residues,ri,cj), l, M);
+                    
+
+                } // loop on the coefficients l 
+        } // loop on the columns cj 
+    } // loop on the rows ri 
+    
+
+    fmpz_clear(M);
+    fmpz_clear(M_1);
+    fmpz_clear(M_2);
+
+}
+
+
+
+
 
 
 

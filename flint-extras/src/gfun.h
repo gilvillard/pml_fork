@@ -86,6 +86,20 @@ void nmod_pseudo_Krylov(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t 
                         const nmod_poly_mat_t PT, const nmod_poly_t  phi1, const nmod_poly_t  Delta);
 
 
+
+/**  Computation of the appropriate matrix for kernel solution 
+ * 
+ *    i.e. numerators of the pseudo-Krylov matrix
+ *     an r x n polynomial matrix 
+ *     with columns multiplied by an appropriate multiple of Delta (not phi1) 
+ *     for the moment  
+ *   
+ */ 
+
+void nmod_pseudo_Krylov_for_kernel(nmod_poly_mat_t LT, const ulong n, const nmod_poly_mat_t PT);
+
+
+
 /**  algeqtodiffeq 
  * 
  *   Fraction-free pseudo-Krylov matrix: full computation w.r.t. phi1
@@ -95,8 +109,26 @@ void nmod_pseudo_Krylov(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t 
 slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong k);
 
 
+/** CRT for Krylov polynomial matrix ready for kernel
+ * 
+ *  return M 
+ *   and found 
+ * 
+ */
+
+void CRT_pseudo_Krylov_for_kernel(fmpz_poly_mat_t int_residues, slong * degs, const ulong n, const slong L, const nn_ptr primes,\
+                                  fmpz_poly_mat_t  PZT);
+
+
+void CRT_poly_mat_combine(fmpz_poly_mat_t int_residues, slong * degs,\
+                            const fmpz_poly_mat_t int_residues_1, const fmpz_t P_1,\
+                            const fmpz_poly_mat_t int_residues_2, const fmpz_t P_2);
+
 
 void fmpz_poly_mat_print_pretty(const fmpz_poly_mat_t mat, const char * var);
+
+void fmpz_poly_mat_fprint_pretty(FILE *file, const fmpz_poly_mat_t mat, const char * var);
+
 
 // One column
 void  fmpz_to_nmod_poly_mat(nmod_poly_mat_t PT, const fmpz_poly_mat_t PZT);
