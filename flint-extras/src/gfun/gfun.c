@@ -1003,9 +1003,15 @@ void CRT_pseudo_Krylov_for_kernel(fmpz_poly_mat_t int_residues, slong * degs, co
     fmpz_init(M);
 
 
+    double t=0.0;
+    double t2=0.0;
+    double t3=0.0;
+    clock_t tt,tt2,tt3;
+
+    tt=clock();
+       
     for (int k=0; k < L; k++) 
     {
-
         nmod_poly_mat_init(Kmod[k], r, n, primes[k]);
 
         nmod_poly_mat_init(PT,r+1,1,primes[k]);
@@ -1013,38 +1019,58 @@ void CRT_pseudo_Krylov_for_kernel(fmpz_poly_mat_t int_residues, slong * degs, co
         fmpz_to_nmod_poly_mat(PT,PZT);
 
         nmod_pseudo_Krylov_for_kernel(Kmod[k], n, PT); 
-
-        for (int ri=0; ri < r; ri++)
-        {
-            for (int cj=0; cj < n; cj++)
-            {
+    }
     
-                if (k==0)
-                {
-                    degs[ri*n+cj] = nmod_poly_degree(nmod_poly_mat_entry(Kmod[k], ri, cj));
+    t += (double)(clock()-tt) / CLOCKS_PER_SEC;
 
+    flint_printf("\n Residues: %.3f sec.\n", t);
+
+
+
+    for (int ri=0; ri < r; ri++)
+    {
+        for (int cj=0; cj < n; cj++)
+            {
+            degs[ri*n+cj] = nmod_poly_degree(nmod_poly_mat_entry(Kmod[0], ri, cj));
+            }
+    }
+
+    tt2=clock();
+
+    fmpz_comb_init(comb,primes,L);
+    fmpz_comb_temp_init(ctemp,comb);
+
+    for (int ri=0; ri < r; ri++)
+    {
+        for (int cj=0; cj < n; cj++)
+        {
+            for (int l=0; l<degs[ri*n+cj]+1; l++)
+            {
+                
+                for (int i=0; i<L; i++)
+                {
+                residues[i] = nmod_poly_get_coeff_ui(nmod_poly_mat_entry(Kmod[i],ri,cj),l);
                 }
 
-                for (int l=0; l<degs[ri*n+cj]+1; l++)
-                {
-                    for (int i=0; i<=k; i++)
-                    {
-                        residues[i] = nmod_poly_get_coeff_ui(nmod_poly_mat_entry(Kmod[i],ri,cj),l);
-                    }
+                tt3=clock();
 
-                    fmpz_comb_init(comb,primes,k+1);
-                    fmpz_comb_temp_init(ctemp,comb);
+                fmpz_multi_CRT_ui(M, residues, comb, ctemp, 1);
 
-                    fmpz_multi_CRT_ui(M, residues, comb, ctemp, 1);
+                t3 += (double)(clock()-tt3) / CLOCKS_PER_SEC; 
+                
+                fmpz_poly_set_coeff_fmpz(fmpz_poly_mat_entry(int_residues,ri,cj),l,M);
 
-                    fmpz_poly_set_coeff_fmpz(fmpz_poly_mat_entry(int_residues,ri,cj),l,M);
+            } // loop on the coefficients l 
+        } // loop on the columns cj 
+    } // loop on the rows ri 
+        
 
-                } // loop on the coefficients l 
-            } // loop on the columns cj 
-        } // loop on the rows ri 
-    } //loop on the primes k
+    t2 += (double)(clock()-tt2) / CLOCKS_PER_SEC;    
 
-    flint_printf("\n %{slong*}\n", degs, n*r);
+    flint_printf("\n CRT tot: %.3f sec.\n", t2);
+    flint_printf("\n CRT: %.3f sec.\n", t3);
+
+    //flint_printf("\n %{slong*}\n", degs, n*r);
 
     _nmod_vec_clear(residues);
     fmpz_clear(M);
@@ -1055,9 +1081,57 @@ void CRT_pseudo_Krylov_for_kernel(fmpz_poly_mat_t int_residues, slong * degs, co
     nmod_poly_mat_clear(PT);
     fmpz_comb_clear(comb);
     fmpz_comb_temp_clear(ctemp);
-
 }
 
+
+
+// void CRT_poly_mat_combine(fmpz_poly_mat_t int_residues, slong * degs,\
+//                             const fmpz_poly_mat_t int_residues_1, const fmpz_t P_1,\
+//                             const fmpz_poly_mat_t int_residues_2, const fmpz_t P_2)
+// {
+
+
+//     slong r = (int_residues_1 -> r);
+
+//     slong n = (int_residues_1 -> c);
+
+
+    
+//     fmpz_t M;
+//     fmpz_init(M);
+
+//     fmpz_t M_1;
+//     fmpz_init(M_1);
+    
+//     fmpz_t M_2;
+//     fmpz_init(M_2);
+
+
+//     for (int ri=0; ri < r; ri++)
+//     {
+//         for (int cj=0; cj < n; cj++)
+//         {
+//                 for (int l=0; l<degs[ri*n+cj]+1; l++)
+//                 {
+
+//                     fmpz_poly_get_coeff_fmpz(M_1, fmpz_poly_mat_entry(int_residues_1,ri,cj), l);
+//                     fmpz_poly_get_coeff_fmpz(M_2, fmpz_poly_mat_entry(int_residues_2,ri,cj), l);
+
+//                     fmpz_CRT(M, M_1, P_1, M_2, P_2, 1);
+
+//                     fmpz_poly_set_coeff_fmpz(fmpz_poly_mat_entry(int_residues,ri,cj), l, M);
+                    
+
+//                 } // loop on the coefficients l 
+//         } // loop on the columns cj 
+//     } // loop on the rows ri 
+    
+
+//     fmpz_clear(M);
+//     fmpz_clear(M_1);
+//     fmpz_clear(M_2);
+
+// }
 
 
 void CRT_poly_mat_combine(fmpz_poly_mat_t int_residues, slong * degs,\
@@ -1071,7 +1145,6 @@ void CRT_poly_mat_combine(fmpz_poly_mat_t int_residues, slong * degs,\
     slong n = (int_residues_1 -> c);
 
 
-    
     fmpz_t M;
     fmpz_init(M);
 
@@ -1080,6 +1153,38 @@ void CRT_poly_mat_combine(fmpz_poly_mat_t int_residues, slong * degs,\
     
     fmpz_t M_2;
     fmpz_init(M_2);
+
+    fmpz_t g;
+    fmpz_init(g);
+
+    fmpz_t s;
+    fmpz_init(s);
+
+    fmpz_t t;
+    fmpz_init(t);
+
+    fmpz_xgcd(g, s, t, P_2, P_1); 
+
+    fmpz_t c1;
+    fmpz_init(c1);
+
+    fmpz_t c2;
+    fmpz_init(c2);
+
+    fmpz_t P;
+    fmpz_init(P);
+
+    fmpz_mul(P,P_1,P_2);
+
+    fmpz_t sP2;
+    fmpz_init(sP2);
+
+    fmpz_mul(sP2,s,P_2);
+
+    fmpz_t tP1;
+    fmpz_init(tP1);
+
+    fmpz_mul(tP1,t,P_1);
 
 
     for (int ri=0; ri < r; ri++)
@@ -1092,7 +1197,24 @@ void CRT_poly_mat_combine(fmpz_poly_mat_t int_residues, slong * degs,\
                     fmpz_poly_get_coeff_fmpz(M_1, fmpz_poly_mat_entry(int_residues_1,ri,cj), l);
                     fmpz_poly_get_coeff_fmpz(M_2, fmpz_poly_mat_entry(int_residues_2,ri,cj), l);
 
-                    fmpz_CRT(M, M_1, P_1, M_2, P_2, 1);
+
+                    fmpz_mul(c1,M_1,sP2);
+                    fmpz_mul(c2,M_2,tP1);
+
+                    // fmpz_mul(c1,M_1,s);
+                    // fmpz_smod(c1,c1,P_1);
+
+                    // fmpz_mul(c2,M_2,t);
+                    // fmpz_smod(c2,c2,P_2);
+
+                    // fmpz_mul(c1,c1,P_2);
+                    // fmpz_mul(c2,c2,P_1);
+
+                    fmpz_add(M,c1,c2);
+                    fmpz_smod(M,M,P);
+
+    
+                    //fmpz_CRT(M, M_1, P_1, M_2, P_2, 1);
 
                     fmpz_poly_set_coeff_fmpz(fmpz_poly_mat_entry(int_residues,ri,cj), l, M);
                     
