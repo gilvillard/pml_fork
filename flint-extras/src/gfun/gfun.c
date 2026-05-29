@@ -24,7 +24,6 @@
 
 #include "gfun.h"
 
-
 /** 
  *    Assume that the degree r in the second variable, say y, is the row dimension - 1 of PT
  */
