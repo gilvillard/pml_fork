@@ -30,7 +30,6 @@
 
 void mat_to_xy(nmod_mpoly_t P, nmod_mpoly_ctx_t ctx, const nmod_poly_mat_t PT)
 {
-
     int i,j;
 
     slong r;
