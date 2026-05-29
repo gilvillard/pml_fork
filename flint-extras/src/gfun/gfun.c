@@ -859,6 +859,8 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
 /*------------------------------------------------------------*/
 /*------------------------------------------------------------*/
 
+
+
 void fmpz_poly_mat_print_pretty(const fmpz_poly_mat_t mat, const char * var)
 {
     slong rdim = mat->r, cdim = mat->c;
@@ -882,6 +884,8 @@ void fmpz_poly_mat_print_pretty(const fmpz_poly_mat_t mat, const char * var)
     flint_printf("]\n");
 }
 
+
+
 void fmpz_poly_mat_fprint_pretty(FILE *file, const fmpz_poly_mat_t mat, const char * var)
 {
     slong rdim = mat->r, cdim = mat->c;
@@ -904,7 +908,27 @@ void fmpz_poly_mat_fprint_pretty(FILE *file, const fmpz_poly_mat_t mat, const ch
     flint_fprintf(file,"]");
 }
 
+void nmod_poly_mat_fprint_pretty(FILE *file, const nmod_poly_mat_t mat, const char * var)
+{
+    slong rdim = mat->r, cdim = mat->c;
 
+    flint_fprintf(file,"[");
+    for (slong i = 0; i < rdim; i++)
+    {
+        flint_fprintf(file,"[");
+        for (slong j = 0; j < cdim; j++)
+        {
+            nmod_poly_fprint_pretty(file,nmod_poly_mat_entry(mat, i, j), var);
+            if (j+1 < cdim)
+                flint_fprintf(file,", ");
+        }
+        if (i != rdim -1)
+            flint_fprintf(file,"],\n");
+        else
+            flint_fprintf(file,"]");
+    }
+    flint_fprintf(file,"]");
+}
 
 // One column
 void  fmpz_to_nmod_poly_mat(nmod_poly_mat_t PT, const fmpz_poly_mat_t PZT)

@@ -129,6 +129,9 @@ void fmpz_poly_mat_print_pretty(const fmpz_poly_mat_t mat, const char * var);
 
 void fmpz_poly_mat_fprint_pretty(FILE *file, const fmpz_poly_mat_t mat, const char * var);
 
+void nmod_poly_mat_fprint_pretty(FILE *file, const nmod_poly_mat_t mat, const char * var);
+
+
 
 // One column
 void  fmpz_to_nmod_poly_mat(nmod_poly_mat_t PT, const fmpz_poly_mat_t PZT);
