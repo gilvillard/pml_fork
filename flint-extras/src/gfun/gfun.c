@@ -1,6 +1,5 @@
 /*
-    Copyright (C) 2025 Gilles Villard, Vincent Neiger
-    Copyright (C) 2026 Gilles Villard, Vincent Neiger
+    Copyright (C) 2026 Gilles Villard
 
     This file is part of PML.
 
@@ -11,6 +10,7 @@
     <https://www.gnu.org/licenses/>.
 */
 
+#include <math.h>
 #include <stdlib.h>
 #include <time.h>
 
@@ -21,6 +21,8 @@
 
 #include "nmod_extra.h" // for nmod_find_root
 #include "nmod_poly_mat_extra.h"
+
+#include "nmod_poly_mat_description.h"
 
 #include "gfun.h"
 
@@ -846,12 +848,272 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
     tt=clock();
     nz=nmod_poly_mat_kernel(LT, pivind, shift, K, ORD_WEAK_POPOV, COL_UPPER);
     t += (double)(clock()-tt) / CLOCKS_PER_SEC;
-    flint_printf("\n Kernel: %.3f sec.\n", t);
+    flint_printf("\n Kernel naive: %.3f sec.\n", t);
 
     return nz; 
 
 }
 
+
+
+
+
+/**  algeqtodiffeq 
+ * 
+ *   Series expansion and description udo-Krylov matrix: full computation w.r.t. phi1
+ * 
+ *      at least k solutions, i.e. n = r+k
+ *   
+ *   returns nz, the number of solutions found 
+ * 
+ *   output: LT, (r+k) x (r+k) polynomial matrix whose nz first columns give 
+ *      the solutions
+ * 
+ * 
+ *   !!!! Check using phi1 or not (simply Delta)
+ *   ===========================================
+ *    
+ */ 
+
+slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong k) 
+{
+
+    
+
+    int i;
+
+
+    ulong prime;
+    prime = nmod_poly_mat_modulus(PT);
+
+    slong r = (PT->r)-1;
+
+
+    /**
+     *  Resultant and inverse of Py
+     *  ---------------------------
+     */
+
+    
+    nmod_poly_t Delta; 
+    nmod_poly_init(Delta,prime);
+
+    nmod_poly_t Deltak; 
+    nmod_poly_init(Deltak,prime);
+
+    nmod_poly_t iDelta; 
+    nmod_poly_init(iDelta,prime);
+
+    nmod_poly_t iDeltak; 
+    nmod_poly_init(iDeltak,prime);
+
+    nmod_poly_t tpol; 
+    nmod_poly_init(tpol,prime);
+
+    nmod_poly_mat_t iPyT;
+    nmod_poly_mat_init(iPyT,r,1,prime);
+
+
+    slong n=r+k;
+
+    nmod_poly_mat_t K;
+    nmod_poly_mat_init(K,r,n,prime);
+
+    nmod_poly_mat_t numer;
+    nmod_poly_mat_init(numer,r,1,prime);
+
+    nmod_poly_mat_t temp;
+    nmod_poly_mat_init(temp,r,1,prime);
+
+
+    /** First column y 
+     */
+    for (i=0; i<r; i++)
+    {
+         nmod_poly_zero(nmod_poly_mat_entry(K, i, 0));
+    }
+    nmod_poly_set_coeff_ui(nmod_poly_mat_entry(K, 1, 0), 0, 1);
+
+    for (i=0; i<r; i++)
+    {
+         nmod_poly_zero(nmod_poly_mat_entry(numer, i, 0));
+    }
+    nmod_poly_set_coeff_ui(nmod_poly_mat_entry(numer, 1, 0), 0, 1);
+
+
+    slong d=nmod_poly_mat_degree(PT);
+
+    nmod_biv_resultant_geometric(Delta, iPyT, PT);
+
+    // Target truncation order for the descripion 
+    slong sigma;
+    sigma = ceil((r+n)*nmod_poly_degree(Delta)/r +1);
+
+    slong N;
+    N = sigma + (n-1); // Including the order for the derivation 
+
+    
+    nmod_poly_inv_series(iDelta, Delta, N);
+
+    nmod_poly_set_coeff_ui(Deltak, 0, 1);
+
+    nmod_poly_set_coeff_ui(iDeltak, 0, 1);
+
+
+    /** 
+     *  Starting for the pseudo-Krylov matrix 
+     *  -------------------------------------
+     */
+
+    nmod_poly_mat_t PxT;
+    nmod_poly_mat_init(PxT,r+1,1,prime);
+
+
+    // negation sign included 
+    for (i=0; i<r+1; i++)
+    {
+        nmod_poly_derivative(nmod_poly_mat_entry(PxT, i, 0),nmod_poly_mat_entry(PT, i, 0));
+        nmod_poly_scalar_mul_nmod(nmod_poly_mat_entry(PxT, i, 0),nmod_poly_mat_entry(PxT, i, 0),prime-1);
+    }
+
+
+    /** Precomputation of C = -Px (Py)^(-1)
+     *  -----------------------------------
+     */
+
+    ulong D;
+
+    D=(2*r-1)*d-1;   // M^* and Y  (2r-2)d + (d-1)
+
+    nmod_poly_mat_t  CT;
+    nmod_poly_mat_init(CT,r,1,prime);
+
+    nmod_biv_mulmod_geometric(CT, PxT, iPyT, PT, D); 
+
+    // Starting from the second column, hence C index k+1 
+
+    D=N+(2*r-2)*d;   // M^* is (2r-2)d  
+
+    for (int k=0; k<n-1; k++)
+    {
+        nmod_poly_mullow(Deltak, Deltak, Delta, N);
+
+        nmod_poly_mullow(iDeltak, iDeltak, iDelta, N);
+
+        // Because aliasing not sure 
+        nmod_apply_T(temp, numer, CT, PT, D);
+        nmod_poly_mat_swap(numer,temp);
+
+        for (i=0; i<r; i++)
+        {
+
+            nmod_poly_truncate(nmod_poly_mat_entry(numer, i, 0), N); // useful ? 
+
+            nmod_poly_mullow(nmod_poly_mat_entry(numer, i, 0), nmod_poly_mat_entry(numer, i, 0), iDeltak, N);
+
+            nmod_poly_derivative(tpol,nmod_poly_mat_entry(K, i, k));
+
+            nmod_poly_add_series(nmod_poly_mat_entry(numer, i, 0),nmod_poly_mat_entry(numer, i, 0),tpol,N);
+
+            nmod_poly_set(nmod_poly_mat_entry(K, i, k+1),nmod_poly_mat_entry(numer, i, 0));
+
+            nmod_poly_mullow(nmod_poly_mat_entry(numer, i, 0), nmod_poly_mat_entry(numer, i, 0), Deltak, N);
+
+        }
+    }
+
+    
+    char namef[500];
+
+    FILE* file;
+
+    sprintf(namef,"res.txt");
+
+    file = fopen(namef, "w");
+
+    flint_fprintf(file,"W:=Matrix(");
+
+    nmod_poly_mat_fprint_pretty(file,K,"x");
+
+    flint_fprintf(file,");\n");
+
+    fclose(file);
+
+
+    /**  Search for a description 
+     *   ------------------------
+     */
+
+
+    nmod_poly_mat_t  NN;
+    nmod_poly_mat_init(NN,r,n,prime);
+
+    nmod_poly_mat_t  DD;
+    nmod_poly_mat_init(DD,n,n,prime);
+
+    nmod_poly_mat_right_description(NN, DD, K, nmod_poly_degree(Delta));
+
+    sprintf(namef,"desc.txt");
+
+    file = fopen(namef, "w");
+
+    flint_fprintf(file,"NN:=Matrix(");
+
+    nmod_poly_mat_fprint_pretty(file,NN,"x");
+
+    flint_fprintf(file,");\n");
+
+    flint_fprintf(file,"\n");
+
+    flint_fprintf(file,"DD:=Matrix(");
+
+    nmod_poly_mat_fprint_pretty(file,DD,"x");
+
+    flint_fprintf(file,");\n");
+
+    fclose(file);
+
+
+    slong nz=0;
+
+    slong pivind[n];
+    slong shift[n];
+
+    for (i=0; i<n; i++)
+    {
+        shift[i]=0;
+    }
+
+
+    nmod_poly_mat_column_degree(pivind, NN, shift);
+
+    flint_printf("\n %{slong*}\n", pivind, n);
+
+
+    double t=0.0;
+    clock_t tt;
+    tt=clock();
+    nz=nmod_poly_mat_kernel(LT, pivind, shift, NN, ORD_WEAK_POPOV, COL_UPPER);
+    t += (double)(clock()-tt) / CLOCKS_PER_SEC;
+    flint_printf("\n Kernel new: %.3f sec.\n", t);
+
+    nmod_poly_mat_multiply(LT,DD,LT);
+
+
+    sprintf(namef,"sol.txt");
+
+    file = fopen(namef, "w");
+
+    flint_fprintf(file,"sol:=Matrix(");
+
+    nmod_poly_mat_fprint_pretty(file,LT,"x");
+
+    flint_fprintf(file,");\n");
+
+   
+    return nz; 
+
+}
 
 /*------------------------------------------------------------*/
 /*------------------------------------------------------------*/

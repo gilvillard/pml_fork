@@ -30,7 +30,7 @@
  *  Left description computation for H(x) n x m in K(x) (power series)
  *    with target degree delta
  * 
- *  requires enough precision in input: ie at least (m+n)*delta/m +1
+ *  requires enough precision in input: i.e. at least (m+n)*delta/m +1
  * 
  *  returns nbrows and a partial (or full) description when 0 < nbrows <= n rows, 
  *    or zero if no candidates 
@@ -64,20 +64,18 @@ slong nmod_poly_mat_left_description(nmod_poly_mat_t N, nmod_poly_mat_t D,
     for (i = 0; i < m; i++)
         nmod_poly_set(nmod_poly_mat_entry(M, n+i, i), mone);
 
-    // printf("\n");
-    // nmod_poly_mat_print_pretty(M, "x");
-    // printf("\n");
 
     nmod_poly_mat_t B;
     nmod_poly_mat_init(B, n+m, n+m, H->modulus);
 
-    // Appropriate shift
+    /** Appropriate shift */
+
     slong shift[n+m];
 
     for (i = 0; i < n+m; i++) 
         shift[i]=0; 
 
-    // Shifted approximant computation 
+    /** Shifted approximant computation */
 
     nmod_poly_mat_pmbasis(B, shift, M, sigma); 
 
@@ -143,8 +141,7 @@ slong nmod_poly_mat_left_description(nmod_poly_mat_t N, nmod_poly_mat_t D,
 
 
 slong nmod_poly_mat_right_description(nmod_poly_mat_t N, nmod_poly_mat_t D,
-                            const nmod_poly_mat_t H, 
-                            slong delta)
+                                        const nmod_poly_mat_t H, slong delta)
 
 {
     slong nbcols;
@@ -169,13 +166,6 @@ slong nmod_poly_mat_right_description(nmod_poly_mat_t N, nmod_poly_mat_t D,
     nmod_poly_mat_transpose(N,NT);
     nmod_poly_mat_transpose(D,DT);
     
-
-    // printf("\n");
-    // nmod_poly_mat_print_pretty(N, "x");
-    // printf("\n");
-    // nmod_poly_mat_print_pretty(D, "x");
-    // printf("\n");
-
     nmod_poly_mat_clear(NT); 
     nmod_poly_mat_clear(DT);
     nmod_poly_mat_clear(HT);

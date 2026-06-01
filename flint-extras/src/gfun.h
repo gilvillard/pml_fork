@@ -109,6 +109,15 @@ void nmod_pseudo_Krylov_for_kernel(nmod_poly_mat_t LT, const ulong n, const nmod
 slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong k);
 
 
+/**  algeqtodiffeq series and descirption 
+ * 
+ *   Fraction-free pseudo-Krylov matrix: full computation w.r.t. phi1
+ *    
+ */ 
+
+slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong k);
+
+
 /** CRT for Krylov polynomial matrix ready for kernel
  * 
  *  return M 
