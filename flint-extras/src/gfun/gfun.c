@@ -467,6 +467,163 @@ void nmod_phi_T(nmod_poly_t  phi1, nmod_poly_t  phi2, const nmod_poly_mat_t CT, 
 
 
 
+/** 
+ */
+
+void find_uv(nmod_poly_mat_t U, nmod_poly_mat_t V, const nmod_poly_t  phi1, const nmod_poly_mat_t CT, \
+                     const nmod_poly_mat_t PT, const nmod_poly_t Delta)
+{
+
+    int i,j;
+
+    ulong prime;
+    prime = nmod_poly_mat_modulus(PT);
+
+    slong r = (PT->r)-1;
+
+    slong d;
+    d = nmod_poly_mat_degree(PT);
+
+    /** Bound on the output degree 
+     *   using constant random column projections  
+     */
+
+    slong D = (2*r-1)*d -1; // M^* and Px  (2r-2)d + (d-1)  
+
+    flint_rand_t state;
+    flint_rand_init(state);
+    srand(time(NULL));
+    flint_rand_set_seed(state, rand(), rand());
+
+
+    nmod_poly_mat_t Z, W;
+    nmod_poly_mat_init(Z,r,1,prime);
+    nmod_poly_mat_init(W,1,r,prime);
+
+    // Better than randtest matrix to be sure to have nonzero entries / Check nonzero ? 
+    for (i=0; i<r; i++)
+    {
+        //nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT1, i, 0), 0, n_randtest(state) % prime);
+        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(Z, i, 0), 0, n_randbits(state,FLINT_BITS-2));
+
+        //nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT2, i, 0), 0, n_randtest(state) % prime); 
+        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(W, 0, i), 0, n_randbits(state,FLINT_BITS-2));
+
+    }
+
+
+    mod_poly_t g;
+    nmod_poly_init(g,prime);
+    nmod_poly_div(g,Delta,phi1);
+
+
+    /** Computation of T 
+     *  ----------------
+     *     could be done via applyT for U 
+     *      but the transpose for V ? 
+     */
+
+    nmod_poly_mat_t Yk, T, temp;
+
+    nmod_poly_mat_init(Yk,r,1,prime);
+    nmod_poly_mat_init(temp,r,1,prime);
+
+    nmod_poly_mat_init(T,r,r,prime);
+
+
+    for (i=0; i<r; i++)
+    {
+        nmod_poly_zero(nmod_poly_mat_entry(T, i, 0)); 
+    }
+
+    for (j=1; j<r; j++)
+    {
+        for (i=0; i<r; i++)
+        {
+            nmod_poly_zero(nmod_poly_mat_entry(Yk, i, 0));
+        }
+        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(Yk, j, 0), 0, 1);
+
+        nmod_apply_T(temp, Yk, CT, PT, D); 
+
+        for (i=0; i<r; i++)
+        {
+            nmod_poly_div(nmod_poly_mat_entry(T, i, j), nmod_poly_mat_entry(temp, i, 0), g);
+        }
+    }
+
+    /**  Computation of U = T.Z
+     *   ----------------------
+     */
+
+    nmod_poly_mat_multiply(U,T,Z);
+
+
+    /**  Computation of V = W.T
+     *   ----------------------
+     */
+
+    nmod_poly_mat_multiply(V,W,T);
+
+
+    nmod_poly_mat_t e;
+    nmod_poly_mat_init(e,1,1,prime);
+    nmod_poly_mat_multiply(e,W,U);
+
+    nmod_poly_invmod(nmod_poly_mat_entry(evaliPy, i, 0),\
+                        evalPy,\
+                        nmod_poly_mat_entry(evalP, i, 0)); // Todo together with the resultant
+
+
+
+
+
+    char namef[500];
+
+    FILE* file;
+
+    sprintf(namef,"res.txt");
+
+    file = fopen(namef, "w");
+
+    flint_fprintf(file,"BB:=Matrix(");
+
+    nmod_poly_mat_fprint_pretty(file,T,"x");
+
+    flint_fprintf(file,");\n");
+
+    flint_fprintf(file,"U:=Matrix(");
+
+    nmod_poly_mat_fprint_pretty(file,U,"x");
+
+    flint_fprintf(file,");\n");
+
+    flint_fprintf(file,"V:=Matrix(");
+
+    nmod_poly_mat_fprint_pretty(file,V,"x");
+
+    flint_fprintf(file,");\n");
+
+    flint_fprintf(file,"ee:=Matrix(");
+
+    nmod_poly_mat_fprint_pretty(file,e,"x");
+
+    flint_fprintf(file,");\n");
+
+    fclose(file);
+
+    nmod_poly_mat_clear(W);
+    nmod_poly_mat_clear(Z);
+    nmod_poly_mat_clear(Yk);
+    nmod_poly_mat_clear(temp);
+    nmod_poly_mat_clear(T);
+
+
+
+}
+
+
+
 
 /**  Computation of the numerators of the pseudo-Krylov matrix
  *     an r x n polynomial matrix 

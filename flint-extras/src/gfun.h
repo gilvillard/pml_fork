@@ -75,6 +75,10 @@ void nmod_phi_T(nmod_poly_t  phi1, nmod_poly_t  phi2, const nmod_poly_mat_t CT, 
                      const nmod_poly_mat_t PT, const nmod_poly_t Delta);
 
 
+void find_uv(nmod_poly_mat_t U, nmod_poly_mat_t V, const nmod_poly_t  phi1, const nmod_poly_mat_t CT, \
+                     const nmod_poly_mat_t PT, const nmod_poly_t Delta);
+
+
 /**  Computation of the numerators of the pseudo-Krylov matrix
  *     an r x n polynomial matrix 
  * 
