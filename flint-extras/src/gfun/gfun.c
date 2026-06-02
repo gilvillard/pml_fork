@@ -467,7 +467,7 @@ void nmod_phi_T(nmod_poly_t  phi1, nmod_poly_t  phi2, const nmod_poly_mat_t CT, 
 
 
 
-/** 
+/**  Includes simplication to have phi1 at denominator 
  */
 
 void find_uv(nmod_poly_mat_t U, nmod_poly_mat_t V, const nmod_poly_t  phi1, const nmod_poly_mat_t CT, \
@@ -512,7 +512,7 @@ void find_uv(nmod_poly_mat_t U, nmod_poly_mat_t V, const nmod_poly_t  phi1, cons
     }
 
 
-    mod_poly_t g;
+    nmod_poly_t g;
     nmod_poly_init(g,prime);
     nmod_poly_div(g,Delta,phi1);
 
@@ -570,11 +570,19 @@ void find_uv(nmod_poly_mat_t U, nmod_poly_mat_t V, const nmod_poly_t  phi1, cons
     nmod_poly_mat_init(e,1,1,prime);
     nmod_poly_mat_multiply(e,W,U);
 
-    nmod_poly_invmod(nmod_poly_mat_entry(evaliPy, i, 0),\
-                        evalPy,\
-                        nmod_poly_mat_entry(evalP, i, 0)); // Todo together with the resultant
+    nmod_poly_t epol;
+    nmod_poly_init(epol,prime);
+    nmod_poly_set(epol,nmod_poly_mat_entry(e, 0, 0));
+
+    nmod_poly_invmod(epol, epol, phi1); 
 
 
+    for (i=0; i<r; i++)
+    {
+        nmod_poly_mul(nmod_poly_mat_entry(V, 0, i), nmod_poly_mat_entry(V, 0, i), epol); 
+        nmod_poly_rem(nmod_poly_mat_entry(V, 0, i),nmod_poly_mat_entry(V, 0, i),phi1);
+
+    }
 
 
 
@@ -617,7 +625,179 @@ void find_uv(nmod_poly_mat_t U, nmod_poly_mat_t V, const nmod_poly_t  phi1, cons
     nmod_poly_mat_clear(Yk);
     nmod_poly_mat_clear(temp);
     nmod_poly_mat_clear(T);
+    nmod_poly_mat_clear(e);
 
+    nmod_poly_clear(g);
+    nmod_poly_clear(epol);
+
+
+}
+
+
+
+/**  Includes simplication to have phi1 at denominator 
+ */
+
+void Description_From_Rank_1(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong n,\
+                             const nmod_poly_mat_t U, const nmod_poly_mat_t V,\
+                             const nmod_poly_t  phi1, const nmod_poly_mat_t CT, \
+                             const nmod_poly_mat_t PT, const nmod_poly_t Delta)
+{
+
+    int i,j;
+
+    ulong prime;
+    prime = nmod_poly_mat_modulus(PT);
+
+    slong r = (PT->r)-1;
+
+    slong d;
+    d = nmod_poly_mat_degree(PT);
+
+    nmod_poly_set(nmod_poly_mat_entry(DD, 0, 0), phi1);
+
+    nmod_poly_t g;
+    nmod_poly_init(g,prime);
+    nmod_poly_div(g,Delta,phi1);
+
+
+    
+    slong D; 
+
+    nmod_poly_mat_t temp; // for calling ffT 
+    nmod_poly_mat_init(temp,r,1,prime);
+
+    nmod_poly_mat_t  tempN; // for calling ffT 
+    nmod_poly_mat_init(tempN,r,1,prime);
+
+
+    for (i=0; i<r; i++)
+    {
+        nmod_poly_set(nmod_poly_mat_entry(NN, i, 0), nmod_poly_mat_entry(U, i, 0));
+    }
+
+
+    nmod_poly_mat_print_pretty(DD,"x");
+
+    flint_printf("\n");
+
+    nmod_poly_mat_print_pretty(NN,"x");
+
+
+    nmod_poly_t b;
+    nmod_poly_init(b,prime);
+
+    nmod_poly_t tpol;
+    nmod_poly_init(tpol,prime);
+
+    /**  M^*  (2r-2)d
+     *   NN  < deg phi1
+     */
+
+    slong deg_phi1;
+    deg_phi1 = nmod_poly_degree(phi1);
+
+
+    D = (2*r-2)*d + deg_phi1 -1; // To check and better tune 
+
+    // We start with the second columns, hence C index j 
+
+    for (j=1; j<n; j++)
+    {
+        
+
+        nmod_poly_mul(b, nmod_poly_mat_entry(V, 0, 0), nmod_poly_mat_entry(NN, 0, j-1));
+        for (i=1; i<r; i++)
+        {
+            nmod_poly_mul(tpol, nmod_poly_mat_entry(V, 0, i), nmod_poly_mat_entry(NN, i, j-1));
+            nmod_poly_add(b,b,tpol);
+        }
+
+        nmod_poly_rem(b, b, phi1);
+
+
+        flint_printf("\n\n");
+        nmod_poly_print_pretty(b,"x");
+
+        nmod_poly_neg(b,b);
+
+
+        for (i=0; i<r; i++)
+        {   
+            nmod_poly_set(nmod_poly_mat_entry(tempN, i, 0), nmod_poly_mat_entry(NN, i, j-1));
+        }
+
+        nmod_apply_T(temp, tempN, CT, PT, D);
+
+
+        for (i=0; i<r; i++)
+        {   
+            nmod_poly_div(nmod_poly_mat_entry(temp, i, 0), nmod_poly_mat_entry(temp, i, 0), g);
+
+            nmod_poly_derivative(tpol, nmod_poly_mat_entry(NN, i, j-1));
+            nmod_poly_mul(tpol, tpol, phi1);
+            nmod_poly_add(tpol, tpol, nmod_poly_mat_entry(temp, i, 0));
+
+            nmod_poly_mul(nmod_poly_mat_entry(NN, i, j), b, nmod_poly_mat_entry(U, i, 0));
+            nmod_poly_add(nmod_poly_mat_entry(NN, i, j), nmod_poly_mat_entry(NN, i, j), tpol);
+
+            nmod_poly_div(nmod_poly_mat_entry(NN, i, j), nmod_poly_mat_entry(NN, i, j), phi1);
+
+        }
+
+        nmod_poly_derivative(tpol, nmod_poly_mat_entry(DD, 0, j-1));
+
+        nmod_poly_add(nmod_poly_mat_entry(DD, 0, j),b,tpol);
+
+        for (i=1; i<=j; i++)
+        {
+
+            nmod_poly_derivative(tpol, nmod_poly_mat_entry(DD, i, j-1));
+
+            nmod_poly_add(nmod_poly_mat_entry(DD, i, j), nmod_poly_mat_entry(DD, i-1, j-1), tpol);
+
+        }
+
+
+
+    }
+
+
+    flint_printf("\n");
+
+    nmod_poly_mat_print_pretty(NN,"x");
+
+    nmod_poly_mat_print_pretty(DD,"x");
+
+    char namef[500];
+
+    FILE* file;
+
+    sprintf(namef,"desc.txt");
+
+    file = fopen(namef, "w");
+
+    flint_fprintf(file,"newN:=Matrix(");
+
+    nmod_poly_mat_fprint_pretty(file,NN,"x");
+
+    flint_fprintf(file,");\n");
+
+    flint_fprintf(file,"newD:=Matrix(");
+
+    nmod_poly_mat_fprint_pretty(file,DD,"x");
+
+    flint_fprintf(file,");\n");
+
+    fclose(file);
+
+    nmod_poly_mat_clear(temp);
+    nmod_poly_mat_clear(tempN);
+        
+
+    nmod_poly_clear(g);
+    nmod_poly_clear(b);
+    nmod_poly_clear(tpol);
 
 
 }
