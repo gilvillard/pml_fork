@@ -677,13 +677,6 @@ void Description_From_Rank_1(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong
     }
 
 
-    nmod_poly_mat_print_pretty(DD,"x");
-
-    flint_printf("\n");
-
-    nmod_poly_mat_print_pretty(NN,"x");
-
-
     nmod_poly_t b;
     nmod_poly_init(b,prime);
 
@@ -698,15 +691,15 @@ void Description_From_Rank_1(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong
     deg_phi1 = nmod_poly_degree(phi1);
 
 
-    D = (2*r-2)*d + deg_phi1 -1; // To check and better tune 
+    D = (2*r-1)*d + deg_phi1 -1; // To check and better tune 
 
     // We start with the second columns, hence C index j 
 
     for (j=1; j<n; j++)
     {
-        
-
+    
         nmod_poly_mul(b, nmod_poly_mat_entry(V, 0, 0), nmod_poly_mat_entry(NN, 0, j-1));
+
         for (i=1; i<r; i++)
         {
             nmod_poly_mul(tpol, nmod_poly_mat_entry(V, 0, i), nmod_poly_mat_entry(NN, i, j-1));
@@ -716,8 +709,8 @@ void Description_From_Rank_1(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong
         nmod_poly_rem(b, b, phi1);
 
 
-        flint_printf("\n\n");
-        nmod_poly_print_pretty(b,"x");
+        //flint_printf("\n ----------------------------  \n");
+        //nmod_poly_print_pretty(b,"x");
 
         nmod_poly_neg(b,b);
 
@@ -728,6 +721,13 @@ void Description_From_Rank_1(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong
         }
 
         nmod_apply_T(temp, tempN, CT, PT, D);
+
+
+        //flint_printf("\n\n temp \n\n");
+
+        //nmod_poly_mat_print_pretty(temp,"x");
+
+        //flint_printf("\n\n");
 
 
         for (i=0; i<r; i++)
@@ -758,16 +758,14 @@ void Description_From_Rank_1(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong
 
         }
 
-
-
     }
 
 
     flint_printf("\n");
 
-    nmod_poly_mat_print_pretty(NN,"x");
+    //nmod_poly_mat_print_pretty(NN,"x");
 
-    nmod_poly_mat_print_pretty(DD,"x");
+    //nmod_poly_mat_print_pretty(DD,"x");
 
     char namef[500];
 
