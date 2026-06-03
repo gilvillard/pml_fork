@@ -641,7 +641,8 @@ void find_uv(nmod_poly_mat_t U, nmod_poly_mat_t V, const nmod_poly_t  phi1, cons
 void Description_From_Rank_1(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong n,\
                              const nmod_poly_mat_t U, const nmod_poly_mat_t V,\
                              const nmod_poly_t  phi1, const nmod_poly_mat_t CT, \
-                             const nmod_poly_mat_t PT, const nmod_poly_t Delta)
+                             const nmod_poly_mat_t PT, \
+                             const nmod_poly_t beta, const nmod_poly_mat_t iN, const nmod_poly_t Delta)
 {
 
     int i,j;
@@ -654,7 +655,7 @@ void Description_From_Rank_1(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong
     slong d;
     d = nmod_poly_mat_degree(PT);
 
-    nmod_poly_set(nmod_poly_mat_entry(DD, 0, 0), phi1);
+    nmod_poly_set(nmod_poly_mat_entry(DD, 0, 0), beta);
 
     nmod_poly_t g;
     nmod_poly_init(g,prime);
@@ -673,7 +674,7 @@ void Description_From_Rank_1(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong
 
     for (i=0; i<r; i++)
     {
-        nmod_poly_set(nmod_poly_mat_entry(NN, i, 0), nmod_poly_mat_entry(U, i, 0));
+        nmod_poly_set(nmod_poly_mat_entry(NN, i, 0), nmod_poly_mat_entry(iN, i, 0));
     }
 
 
@@ -761,33 +762,12 @@ void Description_From_Rank_1(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong
     }
 
 
-    flint_printf("\n");
+    //flint_printf("\n");
 
     //nmod_poly_mat_print_pretty(NN,"x");
 
     //nmod_poly_mat_print_pretty(DD,"x");
 
-    char namef[500];
-
-    FILE* file;
-
-    sprintf(namef,"desc.txt");
-
-    file = fopen(namef, "w");
-
-    flint_fprintf(file,"newN:=Matrix(");
-
-    nmod_poly_mat_fprint_pretty(file,NN,"x");
-
-    flint_fprintf(file,");\n");
-
-    flint_fprintf(file,"newD:=Matrix(");
-
-    nmod_poly_mat_fprint_pretty(file,DD,"x");
-
-    flint_fprintf(file,");\n");
-
-    fclose(file);
 
     nmod_poly_mat_clear(temp);
     nmod_poly_mat_clear(tempN);
@@ -1212,9 +1192,6 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
 
 slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong k) 
 {
-
-    
-
     int i;
 
 
@@ -1430,7 +1407,7 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
     tt=clock();
     nz=nmod_poly_mat_kernel(LT, pivind, shift, NN, ORD_WEAK_POPOV, COL_UPPER);
     t += (double)(clock()-tt) / CLOCKS_PER_SEC;
-    flint_printf("\n Kernel new: %.3f sec.\n", t);
+    flint_printf("\n Kernel series: %.3f sec.\n", t);
 
     nmod_poly_mat_multiply(LT,DD,LT);
 
@@ -1449,6 +1426,213 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
     return nz; 
 
 }
+
+
+
+slong nmod_algeq_to_diffeq_new(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong k) 
+{
+   
+    ulong prime;
+    prime = nmod_poly_mat_modulus(PT);
+
+    slong r = (PT->r)-1;
+
+
+    int i,j;
+
+
+    slong d=nmod_poly_mat_degree(PT);
+
+    ulong n = r+k;
+
+
+    /**
+     *  Resultant and inverse of Py
+     *  ---------------------------
+     */
+
+    
+    nmod_poly_t Delta; 
+    nmod_poly_init(Delta,prime);
+
+    nmod_poly_t phi1; 
+    nmod_poly_init(phi1,prime);
+
+    nmod_poly_t phi2; 
+    nmod_poly_init(phi2,prime);
+
+    nmod_poly_mat_t iPyT;
+    nmod_poly_mat_init(iPyT,r,1,prime);
+
+
+   
+    /** Precomputation of the resultant and C = -Px (Py)^(-1)
+    *  ------------------------------------------------------
+    */
+
+    nmod_biv_resultant_geometric(Delta, iPyT, PT);
+
+    nmod_poly_mat_t PxT;
+    nmod_poly_mat_init(PxT,r+1,1,prime);
+
+
+    // negation sign included 
+    for (i=0; i<r+1; i++)
+    {
+        nmod_poly_derivative(nmod_poly_mat_entry(PxT, i, 0),nmod_poly_mat_entry(PT, i, 0));
+        nmod_poly_scalar_mul_nmod(nmod_poly_mat_entry(PxT, i, 0),nmod_poly_mat_entry(PxT, i, 0),prime-1);
+    }
+
+
+    ulong D;
+
+    D=(2*r-1)*d-1;   // M^* and Px  (2r-2)d + (d-1)
+
+    nmod_poly_mat_t  CT;
+    nmod_poly_mat_init(CT,r,1,prime);
+
+    nmod_biv_mulmod_geometric(CT, PxT, iPyT, PT, D); 
+
+
+    nmod_phi_T(phi1, phi2, CT, PT, Delta);
+
+
+    if (nmod_poly_degree(phi1) == nmod_poly_degree(phi2))
+    {
+        flint_printf("\n Decomposition of rank one possible, deg phi1: %ld, deg Delta: %ld \n",\
+            nmod_poly_degree(phi1), nmod_poly_degree(Delta));
+    }
+    else 
+    {
+        flint_printf("ERROR decomposition of rank one not possible \n");
+
+    }
+
+
+    nmod_poly_mat_t U,V;
+    nmod_poly_mat_init(U,r,1,prime);
+    nmod_poly_mat_init(V,1,r,prime);
+
+
+
+    find_uv(U, V, phi1, CT, PT, Delta);
+
+
+    nmod_poly_mat_t NN,DD;
+
+    nmod_poly_mat_init(NN,r,n,prime);
+    nmod_poly_mat_init(DD,n,n,prime);
+
+
+    Description_From_Rank_1(NN, DD, n, U, V, phi1, CT, PT, phi1, U, Delta);
+
+
+    nmod_poly_mat_t va;
+    nmod_poly_mat_init(va,r,1,prime);
+
+    for (i=0; i<r; i++)
+    {
+         nmod_poly_zero(nmod_poly_mat_entry(va, i, 0));
+    }
+    nmod_poly_set_coeff_ui(nmod_poly_mat_entry(va, 1, 0), 0, 1);
+
+
+    nmod_poly_mat_t A, F;
+
+    nmod_poly_mat_init(F,r,n,prime);
+    nmod_poly_mat_init(A,n,n,prime);
+
+
+    nmod_poly_t beta;
+    nmod_poly_init(beta,prime);
+    nmod_poly_zero(beta);
+
+    Description_From_Rank_1(F, A, n, U, V, phi1, CT, PT, beta, va, Delta);
+   
+
+    nmod_poly_mat_t M;
+    nmod_poly_mat_init(M,n+r,2*n,prime);
+
+
+    for (i=0; i<n; i++)
+    {
+        for (j=0; j<n; j++)
+        {
+            nmod_poly_set(nmod_poly_mat_entry(M, i, j), nmod_poly_mat_entry(DD, i, j));
+            nmod_poly_set(nmod_poly_mat_entry(M, i, j+n), nmod_poly_mat_entry(A, i, j));
+        }
+    }
+
+    for (i=0; i<r; i++)
+    {
+        for (j=0; j<n; j++)
+        {
+            nmod_poly_set(nmod_poly_mat_entry(M, i+n, j), nmod_poly_mat_entry(NN, i, j));
+            nmod_poly_set(nmod_poly_mat_entry(M, i+n, j+n), nmod_poly_mat_entry(F, i, j));
+        }
+    }
+
+
+
+    slong nz=0;
+
+    slong pivind[2*n];
+    slong shift[2*n];
+
+    for (i=0; i<2*n; i++)
+    {
+        shift[i]=0;
+    }
+
+
+    nmod_poly_mat_t S;
+
+    nmod_poly_mat_init(S, 2*n, 2*n, prime);
+
+
+    double t=0.0;
+    clock_t tt;
+    tt=clock();
+    nz=nmod_poly_mat_kernel(S, pivind, shift, M, ORD_WEAK_POPOV, COL_UPPER);
+    t += (double)(clock()-tt) / CLOCKS_PER_SEC;
+    flint_printf("\n Kernel new description: %.3f sec.\n", t);
+
+
+    for (i=0; i<n; i++)
+    {
+        for (j=0; j<n; j++)
+        {
+            nmod_poly_set(nmod_poly_mat_entry(LT, i, j), nmod_poly_mat_entry(S, i+n, j));
+        }
+    }
+
+
+    char namef[500];
+
+    FILE* file;
+
+    sprintf(namef,"sol.txt");
+
+    file = fopen(namef, "w");
+
+    flint_fprintf(file,"sol:=Matrix(");
+
+    nmod_poly_mat_fprint_pretty(file,LT,"x");
+
+    flint_fprintf(file,");\n");
+
+    fclose(file);
+
+    return nz;
+
+
+}
+
+
+
+
+
+
 
 /*------------------------------------------------------------*/
 /*------------------------------------------------------------*/

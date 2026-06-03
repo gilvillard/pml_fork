@@ -84,7 +84,8 @@ void find_uv(nmod_poly_mat_t U, nmod_poly_mat_t V, const nmod_poly_t  phi1, cons
 void Description_From_Rank_1(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong n,\
                              const nmod_poly_mat_t U, const nmod_poly_mat_t V,\
                              const nmod_poly_t  phi1, const nmod_poly_mat_t CT, \
-                             const nmod_poly_mat_t PT, const nmod_poly_t Delta);
+                             const nmod_poly_mat_t PT, \
+                             const nmod_poly_t beta, const nmod_poly_mat_t iN, const nmod_poly_t Delta);
 
 
 /**  Computation of the numerators of the pseudo-Krylov matrix
@@ -128,6 +129,10 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
  */ 
 
 slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong k);
+
+
+slong nmod_algeq_to_diffeq_new(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong k);
+
 
 
 /** CRT for Krylov polynomial matrix ready for kernel
