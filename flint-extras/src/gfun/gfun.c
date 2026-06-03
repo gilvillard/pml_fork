@@ -586,39 +586,39 @@ void find_uv(nmod_poly_mat_t U, nmod_poly_mat_t V, const nmod_poly_t  phi1, cons
 
 
 
-    char namef[500];
+    // char namef[500];
 
-    FILE* file;
+    // FILE* file;
 
-    sprintf(namef,"res.txt");
+    // sprintf(namef,"res.txt");
 
-    file = fopen(namef, "w");
+    // file = fopen(namef, "w");
 
-    flint_fprintf(file,"BB:=Matrix(");
+    // flint_fprintf(file,"BB:=Matrix(");
 
-    nmod_poly_mat_fprint_pretty(file,T,"x");
+    // nmod_poly_mat_fprint_pretty(file,T,"x");
 
-    flint_fprintf(file,");\n");
+    // flint_fprintf(file,");\n");
 
-    flint_fprintf(file,"U:=Matrix(");
+    // flint_fprintf(file,"U:=Matrix(");
 
-    nmod_poly_mat_fprint_pretty(file,U,"x");
+    // nmod_poly_mat_fprint_pretty(file,U,"x");
 
-    flint_fprintf(file,");\n");
+    // flint_fprintf(file,");\n");
 
-    flint_fprintf(file,"V:=Matrix(");
+    // flint_fprintf(file,"V:=Matrix(");
 
-    nmod_poly_mat_fprint_pretty(file,V,"x");
+    // nmod_poly_mat_fprint_pretty(file,V,"x");
 
-    flint_fprintf(file,");\n");
+    // flint_fprintf(file,");\n");
 
-    flint_fprintf(file,"ee:=Matrix(");
+    // flint_fprintf(file,"ee:=Matrix(");
 
-    nmod_poly_mat_fprint_pretty(file,e,"x");
+    // nmod_poly_mat_fprint_pretty(file,e,"x");
 
-    flint_fprintf(file,");\n");
+    // flint_fprintf(file,");\n");
 
-    fclose(file);
+    // fclose(file);
 
     nmod_poly_mat_clear(W);
     nmod_poly_mat_clear(Z);
@@ -1272,6 +1272,10 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
     nmod_poly_set_coeff_ui(iDeltak, 0, 1);
 
 
+    double tc=0.0;
+    clock_t ttc;
+    ttc=clock();
+
     /** 
      *  Starting for the pseudo-Krylov matrix 
      *  -------------------------------------
@@ -1304,7 +1308,7 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
 
     // Starting from the second column, hence C index k+1 
 
-    D=N+(2*r-2)*d;   // M^* is (2r-2)d  
+    D=N+(2*r-1)*d;   // M^* is (2r-2)d  
 
     for (int k=0; k<n-1; k++)
     {
@@ -1334,6 +1338,9 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
         }
     }
 
+
+    tc += (double)(clock()-ttc) / CLOCKS_PER_SEC;
+    flint_printf("\n Construction series: %.3f sec.\n", tc);
     
     char namef[500];
 
@@ -1363,7 +1370,13 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
     nmod_poly_mat_t  DD;
     nmod_poly_mat_init(DD,n,n,prime);
 
+    double ta=0.0;
+    clock_t tta;
+    tta=clock();
     nmod_poly_mat_right_description(NN, DD, K, nmod_poly_degree(Delta));
+    ta += (double)(clock()-tta) / CLOCKS_PER_SEC;
+    flint_printf("\n Approximant series: %.3f sec.\n", ta);
+
 
     sprintf(namef,"desc.txt");
 
