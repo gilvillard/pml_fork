@@ -14,6 +14,7 @@
 #define GFUN_H
 
 #include <flint/fmpz_poly_mat.h>
+#include <flint/nmod_mpoly.h>
 
 #include "nmod_poly_mat_extra.h"
 

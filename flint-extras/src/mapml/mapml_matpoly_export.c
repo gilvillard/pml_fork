@@ -21,6 +21,8 @@
 #include "mapml_conversion.h"
 #include "mapml_matpoly_export.h"
 
+
+
 /***********************************************************
  * 
  * 
@@ -588,9 +590,6 @@ ALGEB pm_weakpopov(MKernelVector kv, ALGEB *args){
  * 
  ***********************************************************/
 
-
-// SEE WHICH ENTRIES
-
 ALGEB pm_kernel(MKernelVector kv, ALGEB *args){
 
 
@@ -722,6 +721,86 @@ ALGEB pm_nullspace(MKernelVector kv, ALGEB *args){
 
 }
 
+
+// The polynomial in input is a vector of polynomials in x 
+
+ALGEB pm_algeq2diffeq_series(MKernelVector kv, ALGEB *args){
+
+    ALGEB vectmat=args[1];
+
+    ulong k  = MapleToInteger64(kv,args[2]);
+
+    ulong modulus = MapleToInteger64(kv,args[3]);
+
+
+    nmod_poly_mat_t PT;
+
+    get_nmod_poly_mat(PT, modulus, kv, vectmat);
+
+    slong r = (PT ->r) -1;
+
+    ulong n = r+k;
+
+    nmod_poly_mat_t LT;
+    nmod_poly_mat_init(LT,n,n,modulus); 
+
+    slong nz;
+
+    nz=nmod_algeq_to_diffeq_series(LT, PT, k); 
+
+    nmod_poly_mat_t kernz;
+    nmod_poly_mat_window_init(kernz, LT, 0, 0, n, nz);
+
+   
+    ALGEB res= MapleListAlloc(kv,2);
+    MapleListAssign(kv,res,1,ToMapleInteger(kv,nz));
+    MapleListAssign(kv,res,2,nmod_poly_mat_to_algeb(kv,kernz));
+
+    nmod_poly_mat_clear(LT);
+    nmod_poly_mat_window_clear(kernz);
+
+    return res;
+
+}
+
+ALGEB pm_algeq2diffeq_rank1(MKernelVector kv, ALGEB *args){
+
+    ALGEB vectmat=args[1];
+
+    ulong k  = MapleToInteger64(kv,args[2]);
+
+    ulong modulus = MapleToInteger64(kv,args[3]);
+
+
+    nmod_poly_mat_t PT;
+
+    get_nmod_poly_mat(PT, modulus, kv, vectmat);
+
+    slong r = (PT ->r) -1;
+
+    ulong n = r+k;
+
+    nmod_poly_mat_t LT;
+    nmod_poly_mat_init(LT,n,n,modulus); 
+
+    slong nz;
+
+    nz=nmod_algeq_to_diffeq_new(LT, PT, k); 
+
+    nmod_poly_mat_t kernz;
+    nmod_poly_mat_window_init(kernz, LT, 0, 0, n, nz);
+
+   
+    ALGEB res= MapleListAlloc(kv,2);
+    MapleListAssign(kv,res,1,ToMapleInteger(kv,nz));
+    MapleListAssign(kv,res,2,nmod_poly_mat_to_algeb(kv,kernz));
+
+    nmod_poly_mat_clear(LT);
+    nmod_poly_mat_window_clear(kernz);
+
+    return res;
+
+}
 
 
 /* -*- mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */

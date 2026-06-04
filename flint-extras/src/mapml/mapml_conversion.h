@@ -22,6 +22,10 @@
 
 #include "nmod_poly_mat_extra.h"
 
+#include "gfun.h"
+
+#include "nmod_poly_mat_description.h"
+
 #include "maplec.h"
 
 #ifdef __cplusplus

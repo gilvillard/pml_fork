@@ -1452,15 +1452,15 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
     flint_printf("\n ZLS kernel series: %.3f sec.    Tot.: %.3f sec.\n", t, tc+t+ta);
 
 
-    t=0.0;
-    tt=clock();
+    // t=0.0;
+    // tt=clock();
 
-    nz=nmod_poly_mat_nullspace(LT,NN);
+    // nz=nmod_poly_mat_nullspace(LT,NN);
     
-    nmod_poly_mat_multiply(LT,DD,LT);
+    // nmod_poly_mat_multiply(LT,DD,LT);
 
-    t += (double)(clock()-tt) / CLOCKS_PER_SEC;
-    flint_printf("\n Flint kernel series: %.3f sec.    Tot.: %.3f sec.\n", t, tc+t+ta);
+    // t += (double)(clock()-tt) / CLOCKS_PER_SEC;
+    // flint_printf("\n Flint kernel series: %.3f sec.    Tot.: %.3f sec.\n", t, tc+t+ta);
 
 
 
