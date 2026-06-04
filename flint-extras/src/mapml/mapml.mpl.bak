@@ -68,8 +68,7 @@ mapml:= module()
     printf("external %s\n",pml_lib);
 	ff:=define_external("nmod_poly_mat_init", MAPLE, LIB = pml_lib):
 
-	printf("[MDeterminant, WeakPopov, RowWeakPopov, PMBasis, MBasis, RowPMBasis, RowMBasis, RightDescription, LeftDescription, Kernel, RowKernel, PMNullspace, Algeq2diffeqSeries,
-	Algeq2diffeqRank1]");
+	printf("[MDeterminant, WeakPopov, RowWeakPopov, PMBasis, MBasis, RowPMBasis, RowMBasis,RightDescription, LeftDescription, Kernel, RowKernel, PMNullspace, Algeq2diffeqSeries,Algeq2diffeqRank1]");
 		
 
 	# Local functions for conversions
@@ -121,7 +120,6 @@ mapml:= module()
 		pm_algeq2diffeq_series := define_external("pm_algeq2diffeq_series",MAPLE, LIB = mapml_lib);
 
 		pm_algeq2diffeq_rank1 := define_external("pm_algeq2diffeq_rank1",MAPLE, LIB = mapml_lib);
-
 
 	end module: 	
 
@@ -273,6 +271,7 @@ mapml:= module()
 		 
 	end proc: 
 
+
 	`mod/Algeq2diffeqRank1`:=proc(P,x,y,k,q) local dy, i, A, t, vect_A,res; 
 
 		dy:=degree(P,y);
@@ -294,9 +293,6 @@ mapml:= module()
 		return res; 
 		 
 	end proc: 
-
-
-
 
 
 	# TODO modp
