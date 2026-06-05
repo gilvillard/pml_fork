@@ -50,7 +50,7 @@ slong nmod_poly_mat_left_description(nmod_poly_mat_t N, nmod_poly_mat_t D,
     slong n = H->r;
     slong m = H->c;
 
-    slong sigma = ceil((double) (m+n)*delta/m +1); 
+    slong sigma = ceil((double) (m+n)*delta/FLINT_MIN(m,n) +1); 
 
     nmod_poly_mat_t M;
     nmod_poly_mat_init(M, n+m, m, H->modulus);

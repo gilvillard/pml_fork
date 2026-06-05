@@ -417,8 +417,7 @@ mapml:= module()
 		m:=LinearAlgebra:-ColumnDimension(A);
 		n:=LinearAlgebra:-RowDimension(A);
 
-		sigma:=ceil((m+n)*(delta+1)/m) +1;
-
+		sigma:=ceil((m+n)*(delta)/min(m,n) +1);
 
 		M:=map(t->convert(series(t,x,sigma),polynom),A) mod q:
 		M:=map(t->modp(t,q),M);
@@ -427,7 +426,7 @@ mapml:= module()
 		res:=RowPMBasis(H,x,[0,seq(0,i=1..m+n)],sigma) mod q; 
 
 
-		dct:=res[2];
+		dct:=res[2]; 
 		cols:=[]: for i from 1 to n+m do if dct[i] <= delta then cols:=[op(cols),i]: fi: od: 
 
 		wstr:="a description of degree at most %1 probably doesn't exist";

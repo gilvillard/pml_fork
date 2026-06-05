@@ -1183,6 +1183,15 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
     flint_printf("\n Kernel naive: %.3f sec.    Tot.: %.3f sec.\n", t, tc+t);
 
 
+    // t=0.0;
+    // tt=clock();
+
+    // nz=nmod_poly_mat_nullspace(LT,K);
+
+    // t += (double)(clock()-tt) / CLOCKS_PER_SEC;
+    // flint_printf("\n Flint kernel naive: %.3f sec.    Tot.: %.3f sec.\n", t, tc+t);
+
+
     nmod_poly_mat_clear(iPyT);
     nmod_poly_mat_clear(PxT);
     nmod_poly_mat_clear(CT);
@@ -1395,10 +1404,17 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
     nmod_poly_mat_t  DD;
     nmod_poly_mat_init(DD,n,n,prime);
 
+    // double ta=0.0;
+    // clock_t tta;
+    // tta=clock();
+    // nmod_poly_mat_right_description(NN, DD, K, nmod_poly_degree(Delta));
+    // ta += (double)(clock()-tta) / CLOCKS_PER_SEC;
+    // flint_printf("\n Approximant series: %.3f sec.\n", ta);
+
     double ta=0.0;
     clock_t tta;
     tta=clock();
-    nmod_poly_mat_right_description(NN, DD, K, nmod_poly_degree(Delta));
+    nmod_poly_mat_left_description(NN, DD, K, nmod_poly_degree(Delta));
     ta += (double)(clock()-tta) / CLOCKS_PER_SEC;
     flint_printf("\n Approximant series: %.3f sec.\n", ta);
 
@@ -1441,15 +1457,24 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
 
     flint_printf("\n Degree: %ld    %ld x %ld\n", nmod_poly_mat_degree(NN), NN->r, NN->c);
 
+
     double t=0.0;
     clock_t tt;
     tt=clock();
     nz=nmod_poly_mat_kernel(LT, pivind, shift, NN, ORD_WEAK_POPOV, COL_UPPER);
-    
-    nmod_poly_mat_multiply(LT,DD,LT);
 
     t += (double)(clock()-tt) / CLOCKS_PER_SEC;
-    flint_printf("\n ZLS kernel series: %.3f sec.    Tot.: %.3f sec.\n", t, tc+t+ta);
+    flint_printf("\n ZLS kernel series: %.3f sec.    \n", t);
+
+
+    // double t2=0.0;
+    // tt=clock();
+    
+    // nmod_poly_mat_multiply(LT,DD,LT);
+
+    // t2 += (double)(clock()-tt) / CLOCKS_PER_SEC;
+    // flint_printf("\n multiply series: %.3f sec.    Tot.: %.3f sec.\n", t2, t2+tc+t+ta);
+
 
 
     // t=0.0;
@@ -1694,21 +1719,21 @@ slong nmod_algeq_to_diffeq_new(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, con
         }
     }
 
-    char namef[500];
+    // char namef[500];
 
-    FILE* file;
+    // FILE* file;
 
-    sprintf(namef,"sol.txt");
+    // sprintf(namef,"sol.txt");
 
-    file = fopen(namef, "w");
+    // file = fopen(namef, "w");
 
-    flint_fprintf(file,"sol:=Matrix(");
+    // flint_fprintf(file,"sol:=Matrix(");
 
-    nmod_poly_mat_fprint_pretty(file,LT,"x");
+    // nmod_poly_mat_fprint_pretty(file,LT,"x");
 
-    flint_fprintf(file,");\n");
+    // flint_fprintf(file,");\n");
 
-    fclose(file);
+    // fclose(file);
 
 
     nmod_poly_mat_clear(iPyT);
