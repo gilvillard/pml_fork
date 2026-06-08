@@ -1295,9 +1295,29 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
 
     nmod_biv_resultant_geometric(Delta, iPyT, PT);
 
+
+    /**  Target degree of the description 
+     *     left description 
+     *     
+     *     nmod_poly_degree(Delta) for r x (r+1) i.e. k=1
+     *     for additional k one should add 
+     *     (k-1) nmod_poly_degree(Delta) to share between 
+     *      r row in the denominator matrix 
+     * 
+     *   would remain nmod_poly_degree(Delta) for a right description 
+     */
+
+    slong target_degree;
+
+    target_degree =  ceil((double) nmod_poly_degree(Delta)\
+                     + ((double) (k-1)*nmod_poly_degree(Delta))/((double) r-1));   
+
+    
     // Target truncation order for the descripion 
+
     slong sigma;
-    sigma = ceil((r+n)*nmod_poly_degree(Delta)/r +1);
+    sigma = ceil((r+n)*target_degree/r +1);
+
 
     slong N;
     N = sigma + (n-1); // Including the order for the derivation 
@@ -1414,7 +1434,7 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
     double ta=0.0;
     clock_t tta;
     tta=clock();
-    nmod_poly_mat_left_description(NN, DD, K, nmod_poly_degree(Delta));
+    //nmod_poly_mat_left_description(NN, DD, K, target_degree);
     ta += (double)(clock()-tta) / CLOCKS_PER_SEC;
     flint_printf("\n Approximant series: %.3f sec.\n", ta);
 
@@ -1461,7 +1481,8 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
     double t=0.0;
     clock_t tt;
     tt=clock();
-    nz=nmod_poly_mat_kernel(LT, pivind, shift, NN, ORD_WEAK_POPOV, COL_UPPER);
+    nz=0; 
+    //nz=nmod_poly_mat_kernel(LT, pivind, shift, NN, ORD_WEAK_POPOV, COL_UPPER);
 
     t += (double)(clock()-tt) / CLOCKS_PER_SEC;
     flint_printf("\n ZLS kernel series: %.3f sec.    \n", t);
@@ -1622,8 +1643,14 @@ slong nmod_algeq_to_diffeq_new(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, con
     nmod_poly_mat_init(DD,n,n,prime);
 
 
+    double tfr1=0.0;
+    clock_t ttfr1;
+    ttfr1=clock();
+
     Description_From_Rank_1(NN, DD, n, U, V, phi1, CT, PT, phi1, U, Delta);
 
+    tfr1 += (double)(clock()-ttfr1) / CLOCKS_PER_SEC;
+    flint_printf("\n Description from rank 1: %.3f sec.\n", tfr1);
 
     nmod_poly_mat_t va;
     nmod_poly_mat_init(va,r,1,prime);
