@@ -425,8 +425,10 @@ mapml:= module()
 
 		res:=RowPMBasis(H,x,[0,seq(0,i=1..m+n)],sigma) mod q; 
 
-
 		dct:=res[2]; 
+
+		print(dct);
+		
 		cols:=[]: for i from 1 to n+m do if dct[i] <= delta then cols:=[op(cols),i]: fi: od: 
 
 		wstr:="a description of degree at most %1 probably doesn't exist";

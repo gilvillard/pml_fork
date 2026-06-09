@@ -30,7 +30,7 @@
  *  Left description computation for H(x) n x m in K(x) (power series)
  *    with target degree delta
  * 
- *  requires enough precision in input: i.e. at least (m+n)*delta/m +1
+ *  requires enough precision in input: i.e. at least (m+n)*delta/min(n,m) +1
  * 
  *  returns nbrows and a partial (or full) description when 0 < nbrows <= n rows, 
  *    or zero if no candidates 
@@ -79,6 +79,7 @@ slong nmod_poly_mat_left_description(nmod_poly_mat_t N, nmod_poly_mat_t D,
 
     nmod_poly_mat_pmbasis(B, shift, M, sigma); 
 
+    //flint_printf("%{slong*}", shift, m+n);
 
     slong rows[n+m];
     slong nbrows=0;

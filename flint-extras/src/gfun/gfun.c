@@ -1225,7 +1225,7 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
 
 slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong k) 
 {
-    int i;
+    int i,j;
 
 
     ulong prime;
@@ -1284,11 +1284,13 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
     }
     nmod_poly_set_coeff_ui(nmod_poly_mat_entry(K, 1, 0), 0, 1);
 
+
     for (i=0; i<r; i++)
     {
          nmod_poly_zero(nmod_poly_mat_entry(numer, i, 0));
     }
     nmod_poly_set_coeff_ui(nmod_poly_mat_entry(numer, 1, 0), 0, 1);
+
 
 
     slong d=nmod_poly_mat_degree(PT);
@@ -1313,11 +1315,23 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
                      + ((double) (k-1)*nmod_poly_degree(Delta))/((double) r-1));   
 
     
+    target_degree =  nmod_poly_degree(Delta);
+
+    // Choice of right or left description-based strategy 
+    slong right_des = 1;
+
+    if (right_des == 0)
+    {
+        slong extra_guessed; 
+        extra_guessed =  ceil(  ((double) (k-1)*(nmod_poly_degree(Delta)-d))   / ((double) r-1)   );   
+        target_degree += extra_guessed; 
+    }
+   
+
     // Target truncation order for the descripion 
 
     slong sigma;
-    sigma = ceil((r+n)*target_degree/r +1);
-
+    sigma = ceil(((double) (r+n)*target_degree)/((double) r) +1);
 
     slong N;
     N = sigma + (n-1); // Including the order for the derivation 
@@ -1413,33 +1427,106 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
     // fclose(file);
 
 
-    /**  Search for a description 
-     *   ------------------------
+    nmod_poly_mat_t  NN;
+    nmod_poly_mat_t  DD;
+
+
+    slong nz=0;
+
+    slong pivind[n];
+    slong shift[n];
+
+    for (i=0; i<n; i++)
+    {
+        shift[i]=0;
+    }
+
+    /** Looking for a right description 
+     *  -------------------------------
      */
 
+    if (right_des == 1)
+    {
+        nmod_poly_mat_init(NN,r,n,prime);
+        nmod_poly_mat_init(DD,n,n,prime);
 
-    nmod_poly_mat_t  NN;
-    nmod_poly_mat_init(NN,r,n,prime);
+        double ta=0.0;
+        clock_t tta;
+        tta=clock();
+        nmod_poly_mat_right_description(NN, DD, K, target_degree);
+        ta += (double)(clock()-tta) / CLOCKS_PER_SEC;
+        flint_printf("\n Right approximant series: %.3f sec.\n", ta);
 
-    nmod_poly_mat_t  DD;
-    nmod_poly_mat_init(DD,n,n,prime);
+        flint_printf("\n Degree of the right description: %ld, %ld\n", \
+                        nmod_poly_mat_degree(DD),nmod_poly_mat_degree(NN));
 
-    // double ta=0.0;
-    // clock_t tta;
-    // tta=clock();
-    // nmod_poly_mat_right_description(NN, DD, K, nmod_poly_degree(Delta));
-    // ta += (double)(clock()-tta) / CLOCKS_PER_SEC;
-    // flint_printf("\n Approximant series: %.3f sec.\n", ta);
+        double t=0.0;
+        clock_t tt;
+        tt=clock();
 
-    double ta=0.0;
-    clock_t tta;
-    tta=clock();
-    //nmod_poly_mat_left_description(NN, DD, K, target_degree);
-    ta += (double)(clock()-tta) / CLOCKS_PER_SEC;
-    flint_printf("\n Approximant series: %.3f sec.\n", ta);
+        nz=nmod_poly_mat_kernel(LT, pivind, shift, NN, ORD_WEAK_POPOV, COL_UPPER);
+
+        t += (double)(clock()-tt) / CLOCKS_PER_SEC;
+        flint_printf("\n ZLS kernel series: %.3f sec. \n", t);
 
 
-    // sprintf(namef,"desc.txt");
+        double t2=0.0;
+        tt=clock();
+
+        nmod_poly_mat_t S; 
+        nmod_poly_mat_init(S, n, nz, prime);
+
+        for (i=0; i<n; i++)
+            for (j=0; j<nz; j++)
+                nmod_poly_set(nmod_poly_mat_entry(S, i, j),nmod_poly_mat_entry(LT, i, j));
+
+        nmod_poly_mat_multiply(S, DD, S);
+    
+        t2 += (double)(clock()-tt) / CLOCKS_PER_SEC;
+        flint_printf("\n multiply series: %.3f sec.  Tot.: %.3f sec. \n", t2, t2+t+tc+ta);
+
+
+        for (i=0; i<n; i++)
+            for (j=0; j<nz; j++)
+                nmod_poly_set(nmod_poly_mat_entry(LT, i, j),nmod_poly_mat_entry(S, i, j));
+
+        flint_printf("\n Polynomial matrices series: %.3f sec. \n", ta +t + t2);
+
+        //nmod_poly_mat_clear(S);
+        nmod_poly_mat_clear(S);
+    }
+    /** Looking for a left description 
+     *  ------------------------------
+     */
+    else 
+    {
+        nmod_poly_mat_init(NN,r,n,prime);
+        nmod_poly_mat_init(DD,r,r,prime);
+
+
+        double ta=0.0;
+        clock_t tta;
+        tta=clock();
+        nmod_poly_mat_left_description(NN, DD, K, target_degree);
+        ta += (double)(clock()-tta) / CLOCKS_PER_SEC;
+        flint_printf("\n Left approximant series: %.3f sec.\n", ta);
+
+        flint_printf("\n Degree of the left description: %ld, %ld    guessed: %ld,\n",\
+                            nmod_poly_mat_degree(DD),nmod_poly_mat_degree(NN),target_degree);
+
+        double t=0.0;
+        clock_t tt;
+        tt=clock();
+ 
+        nz=nmod_poly_mat_kernel(LT, pivind, shift, NN, ORD_WEAK_POPOV, COL_UPPER);
+        t += (double)(clock()-tt) / CLOCKS_PER_SEC;
+        flint_printf("\n ZLS kernel series: %.3f sec.   Tot.: %.3f sec. \n", t,t+ta+tc);
+
+        flint_printf("\n Polynomial matrices series: %.3f sec. \n", t+ta);
+    }
+
+
+     // sprintf(namef,"desc.txt");
 
     // file = fopen(namef, "w");
 
@@ -1458,67 +1545,6 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
     // flint_fprintf(file,");\n");
 
     // fclose(file);
-
-
-    slong nz=0;
-
-    slong pivind[n];
-    slong shift[n];
-
-    for (i=0; i<n; i++)
-    {
-        shift[i]=0;
-    }
-
-
-    nmod_poly_mat_column_degree(pivind, NN, shift);
-
-    //flint_printf("\n %{slong*}\n", pivind, n);
-
-    flint_printf("\n Degree: %ld    %ld x %ld\n", nmod_poly_mat_degree(NN), NN->r, NN->c);
-
-
-    double t=0.0;
-    clock_t tt;
-    tt=clock();
-    nz=0; 
-    //nz=nmod_poly_mat_kernel(LT, pivind, shift, NN, ORD_WEAK_POPOV, COL_UPPER);
-
-    t += (double)(clock()-tt) / CLOCKS_PER_SEC;
-    flint_printf("\n ZLS kernel series: %.3f sec.    \n", t);
-
-
-    // double t2=0.0;
-    // tt=clock();
-    
-    // nmod_poly_mat_multiply(LT,DD,LT);
-
-    // t2 += (double)(clock()-tt) / CLOCKS_PER_SEC;
-    // flint_printf("\n multiply series: %.3f sec.    Tot.: %.3f sec.\n", t2, t2+tc+t+ta);
-
-
-
-    // t=0.0;
-    // tt=clock();
-
-    // nz=nmod_poly_mat_nullspace(LT,NN);
-    
-    // nmod_poly_mat_multiply(LT,DD,LT);
-
-    // t += (double)(clock()-tt) / CLOCKS_PER_SEC;
-    // flint_printf("\n Flint kernel series: %.3f sec.    Tot.: %.3f sec.\n", t, tc+t+ta);
-
-
-
-    // sprintf(namef,"sol.txt");
-
-    // file = fopen(namef, "w");
-
-    // flint_fprintf(file,"sol:=Matrix(");
-
-    // nmod_poly_mat_fprint_pretty(file,LT,"x");
-
-    // flint_fprintf(file,");\n");
 
 
     nmod_poly_mat_clear(iPyT);
@@ -1677,6 +1703,12 @@ slong nmod_algeq_to_diffeq_new(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, con
 
     tc += (double)(clock()-ttc) / CLOCKS_PER_SEC;
     flint_printf("\n Construction new: %.3f sec.\n", tc);
+
+
+    flint_printf("\n Degree of the description: DD %ld, NN %ld\n", nmod_poly_mat_degree(DD),nmod_poly_mat_degree(NN));
+
+    flint_printf("\n Degree of the description: F %ld, A %ld\n", nmod_poly_mat_degree(F),nmod_poly_mat_degree(A));
+
    
 
     nmod_poly_mat_t M;
@@ -1723,6 +1755,7 @@ slong nmod_algeq_to_diffeq_new(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, con
     double t=0.0;
     clock_t tt;
     tt=clock();
+    nz=0;
     nz=nmod_poly_mat_kernel(S, pivind, shift, M, ORD_WEAK_POPOV, COL_UPPER);
     t += (double)(clock()-tt) / CLOCKS_PER_SEC;
     flint_printf("\n ZLS kernel new description: %.3f sec.   Tot.: %.3f sec.\n", t,t+tc);
