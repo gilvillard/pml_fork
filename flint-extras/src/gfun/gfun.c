@@ -1025,20 +1025,26 @@ void nmod_pseudo_Krylov_for_kernel(nmod_poly_mat_t K, const ulong n, const nmod_
  * 
  *   Fraction-free pseudo-Krylov matrix: full computation w.r.t. phi1
  * 
- *      at least k solutions, i.e. n = r+k
+ *      computes n columns of the pseudo-Krylov matrix 
+ * 
+ *   In the generic case, should be used with n = r+1 for one solution 
+ * 
+ *     in general can be used with any value of n that could be guessed 
+ *      in advance 
  *   
  *   returns nz, the number of solutions found 
  * 
- *   output: LT, (r+k) x (r+k) polynomial matrix whose nz first columns give 
- *      the solutions
+ *   output: LT, n x n polynomial matrix whose nz first columns 
+ *     may give the solutions
  * 
+ *   
  * 
  *   !!!! Check using phi1 or not (simply Delta)
  *   ===========================================
  *    
  */ 
 
-slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong k) 
+slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n) 
 {
     int i,j;
 
@@ -1125,8 +1131,8 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
      *   -----------------------------------------------
      */
 
-    slong n;
-    n=r+k;
+    //slong n;
+    //n=r+k;
 
     nmod_poly_mat_t  K;
     nmod_poly_mat_init(K,r,n,prime);
@@ -1182,6 +1188,13 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
     t += (double)(clock()-tt) / CLOCKS_PER_SEC;
     flint_printf("\n Kernel naive: %.3f sec.    Tot.: %.3f sec.\n", t, tc+t);
 
+    if (nz==0) 
+    {
+
+        printf("\n ** No solution found, pseudo-Krylov matrix of dimension %ld x %ld\n",r,n);
+
+    }
+
 
     // t=0.0;
     // tt=clock();
@@ -1216,6 +1229,18 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
  * 
  *   output: LT, (r+k) x (r+k) polynomial matrix whose nz first columns give 
  *      the solutions
+ * 
+ *     computes n columns of the pseudo-Krylov matrix 
+ * 
+ *   In the generic case, should be used with n = r+1 for one solution 
+ * 
+ *     in general can be used with any value of n that could be guessed 
+ *      in advance 
+ *   
+ *   returns nz, the number of solutions found 
+ * 
+ *   output: LT, n x n polynomial matrix whose nz first columns 
+ *     may give the solutions
  * 
  * 
  *   !!!! Check using phi1 or not (simply Delta)

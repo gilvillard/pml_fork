@@ -120,7 +120,7 @@ void nmod_pseudo_Krylov_for_kernel(nmod_poly_mat_t LT, const ulong n, const nmod
  *    
  */ 
 
-slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong k);
+slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
 
 
 /**  algeqtodiffeq series and descirption 
