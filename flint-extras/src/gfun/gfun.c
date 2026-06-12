@@ -2253,6 +2253,99 @@ void CRT_poly_mat_combine(fmpz_poly_mat_t int_residues, slong * degs,\
 
 
 
+slong iterative_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const nmod_poly_mat_t iQ,\
+                                 const nmod_poly_mat_t a, const slong n) 
+{
+
+    int i,j,k;
+
+
+    ulong prime;
+    prime = nmod_poly_mat_modulus(P);
+
+    slong r = (iP->r);
+
+
+    nmod_poly_mat_t P;
+    nmod_poly_mat_init(P,r,r,prime);
+
+    nmod_poly_mat_t Pnew;
+    nmod_poly_mat_init(Pnew,r,r,prime);
+
+    nmod_poly_mat_t Q;
+    nmod_poly_mat_init(Q,r,r,prime);
+
+    nmod_poly_mat_t Qnew;
+    nmod_poly_mat_init(Qnew,r,r,prime);
+
+
+    nmod_poly_mat_t TN;
+    nmod_poly_mat_init(TN,r,n,prime);
+
+    nmod_poly_mat_t v;
+    nmod_poly_mat_init(v,r,1,prime);
+
+    nmod_poly_mat_t w;
+    nmod_poly_mat_init(w,r,1,prime);
+
+
+    // Init 
+
+    for (i=0; i<r: i++)
+    {
+        nmod_poly_set(nmod_poly_mat_entry(N, i, 0), nmod_poly_mat_entry(a, i, 0));
+    }
+
+    nmod_poly_mat_set(P,iP);
+    nmod_poly_mat_set(Q,iQ);
+
+    // (k+1)th column hence new column with C index k
+
+    for (k=1; k<=1; k++)
+    {
+
+        for (i=0; i<r: i++)
+        {
+            nmod_poly_set(nmod_poly_mat_entry(v, i, 0), nmod_poly_mat_entry(N, i, k-1));
+        }
+
+        w:=map(t->expand(t) mod q,<P[i-1].v + Q[i-1]. diff(v,x)>);
+
+
+
+
+        // intervertir Pnew P  Qnew Q 
+
+    }
+
+
+
+
+
+
+    /**
+     *  Resultant and inverse of Py
+     *  ---------------------------
+     */
+
+    
+    nmod_poly_t Delta; 
+    nmod_poly_init(Delta,prime);
+
+    nmod_poly_t Deltak; 
+    nmod_poly_init(Deltak,prime);
+
+    nmod_poly_t iDelta; 
+    nmod_poly_init(iDelta,prime);
+
+    nmod_poly_t iDeltak; 
+    nmod_poly_init(iDeltak,prime);
+
+    nmod_poly_t tpol; 
+    nmod_poly_init(tpol,prime);
+
+    nmod_poly_mat_t iPyT;
+    nmod_poly_mat_init(iPyT,r,1,prime);
 
 
 
