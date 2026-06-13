@@ -2843,7 +2843,7 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
     nmod_poly_set_coeff_ui(nmod_poly_mat_entry(Yk, 1, 0), 0, 1);
 
 
-    rec_pseudo_krylov(K, P, Q, Yk, n);
+    iterative_pseudo_krylov(K, P, Q, Yk, n);
 
 
     slong pivind_col[n];
