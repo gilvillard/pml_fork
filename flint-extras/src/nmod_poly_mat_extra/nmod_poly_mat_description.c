@@ -125,7 +125,6 @@ slong nmod_poly_mat_left_description(nmod_poly_mat_t N, nmod_poly_mat_t D,
 
 }
 
-
 /**
  *  Right description computation for H(x) m x n in K(x) (power series)
  *    with target degree delta

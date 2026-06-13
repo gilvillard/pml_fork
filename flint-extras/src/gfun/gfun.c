@@ -1618,7 +1618,6 @@ slong nmod_algeq_to_diffeq_new(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, con
      *  ---------------------------
      */
 
-    
     nmod_poly_t Delta; 
     nmod_poly_init(Delta,prime);
 
@@ -2253,7 +2252,7 @@ void CRT_poly_mat_combine(fmpz_poly_mat_t int_residues, slong * degs,\
 
 
 
-slong iterative_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const nmod_poly_mat_t iQ,\
+void iterative_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const nmod_poly_mat_t iQ,\
                                  const nmod_poly_mat_t a, const slong n) 
 {
 
@@ -2261,7 +2260,7 @@ slong iterative_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const
 
 
     ulong prime;
-    prime = nmod_poly_mat_modulus(P);
+    prime = nmod_poly_mat_modulus(iP);
 
     slong r = (iP->r);
 
@@ -2269,29 +2268,42 @@ slong iterative_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const
     nmod_poly_mat_t P;
     nmod_poly_mat_init(P,r,r,prime);
 
-    nmod_poly_mat_t Pnew;
-    nmod_poly_mat_init(Pnew,r,r,prime);
-
     nmod_poly_mat_t Q;
     nmod_poly_mat_init(Q,r,r,prime);
 
-    nmod_poly_mat_t Qnew;
-    nmod_poly_mat_init(Qnew,r,r,prime);
-
+    nmod_poly_mat_t D;
+    nmod_poly_mat_init(D,r,r,prime);
 
     nmod_poly_mat_t TN;
     nmod_poly_mat_init(TN,r,n,prime);
 
+    nmod_poly_mat_t TNk; // window
+
+    nmod_poly_mat_t Nk;  // window
+  
     nmod_poly_mat_t v;
     nmod_poly_mat_init(v,r,1,prime);
 
     nmod_poly_mat_t w;
     nmod_poly_mat_init(w,r,1,prime);
 
+    nmod_poly_mat_t B;
+    nmod_poly_mat_init(B,2*r,r,prime);
+
+    nmod_poly_mat_t ker;
+    nmod_poly_mat_init(ker,2*r,2*r,prime);
+
+    slong pivind[2*r];
+    slong shift[2*r];
+
+    for (i=0; i<2*r; i++)
+    {
+        shift[i]=0;
+    }
 
     // Init 
 
-    for (i=0; i<r: i++)
+    for (i=0; i<r; i++)
     {
         nmod_poly_set(nmod_poly_mat_entry(N, i, 0), nmod_poly_mat_entry(a, i, 0));
     }
@@ -2299,58 +2311,342 @@ slong iterative_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const
     nmod_poly_mat_set(P,iP);
     nmod_poly_mat_set(Q,iQ);
 
+    nmod_poly_mat_set(D,Q);
+
     // (k+1)th column hence new column with C index k
 
-    for (k=1; k<=1; k++)
+    for (k=1; k<n; k++)
     {
 
-        for (i=0; i<r: i++)
+        // v:=N[i-1][1..-1,-1];
+        // w:=map(t->expand(t) mod q,<P[i-1].v + Q[i-1]. diff(v,x)>);
+
+        for (i=0; i<r; i++)
         {
             nmod_poly_set(nmod_poly_mat_entry(v, i, 0), nmod_poly_mat_entry(N, i, k-1));
         }
 
-        w:=map(t->expand(t) mod q,<P[i-1].v + Q[i-1]. diff(v,x)>);
+        nmod_poly_mat_multiply(w, P, v);
+
+        
+        for (i=0; i<r; i++)
+        {
+            nmod_poly_derivative(nmod_poly_mat_entry(v, i, 0), nmod_poly_mat_entry(N, i, k-1));
+        }
+
+        nmod_poly_mat_multiply(v, Q, v);
+
+         
+
+        nmod_poly_mat_add(w, w, v);
+
+         
+
+        // N[i]:=map(t->expand(t) mod q, <Q[i-1].N[i-1] | w >);
+
+        // Could be done diretly if alias with windows
+
+        nmod_poly_mat_window_init(TNk, TN, 0,0, r, k);
+        nmod_poly_mat_window_init(Nk, N, 0, 0, r, k);
+
+
+        nmod_poly_mat_multiply(TNk, Q, Nk);
+
+        nmod_poly_mat_print_pretty(TNk,"x");
+
+        for (i=0; i<r; i++)
+        {
+            for (j=0; j<k; j++)
+            {
+                nmod_poly_set(nmod_poly_mat_entry(N, i, j), nmod_poly_mat_entry(TN, i, j));
+            }
+            nmod_poly_set(nmod_poly_mat_entry(N, i, k), nmod_poly_mat_entry(w, i, 0));
+        }
+
+        nmod_poly_mat_window_clear(TNk);
+        nmod_poly_mat_window_clear(Nk);
+
+        nmod_poly_mat_print_pretty(N,"x");
+
+
+        // map(t->Normal(t) mod q, (P[i-1]-diff(Q[i-1],x)).(1/Q[i-1])): 
+        // Q[i],P[i]:=LeftDescription(%,x,d) mod q; 
+
+        for (i=0; i<r; i++)
+        {
+            for (j=0; j<r; j++)
+            {
+
+                nmod_poly_derivative(nmod_poly_mat_entry(B, i, j), nmod_poly_mat_entry(Q, i, j));
+                nmod_poly_sub(nmod_poly_mat_entry(B, i, j),\
+                                nmod_poly_mat_entry(B, i, j),nmod_poly_mat_entry(P, i, j));
+
+                nmod_poly_set(nmod_poly_mat_entry(B, i+r, j), nmod_poly_mat_entry(Q, i, j));
+            }
+        }
+
+        nmod_poly_mat_kernel(ker, pivind, shift, B, ORD_WEAK_POPOV, ROW_UPPER);
+
+
+        for (i=0; i<r; i++)
+        {
+            for (j=0; j<r; j++)
+            {
+                nmod_poly_set(nmod_poly_mat_entry(Q, i, j), nmod_poly_mat_entry(ker, i, j));
+                nmod_poly_set(nmod_poly_mat_entry(P, i, j), nmod_poly_mat_entry(ker, i, j+r));
+            }
+        }
+
+
+        char namef[500];
+
+        FILE* file;
+
+        sprintf(namef,"res.txt");
+
+        file = fopen(namef, "w");
+
+        flint_fprintf(file,"D2:=Matrix(");
+        nmod_poly_mat_fprint_pretty(file,D,"x");
+        flint_fprintf(file,");\n");
+
+        flint_fprintf(file,"N2:=Matrix(");
+        nmod_poly_mat_fprint_pretty(file,N,"x");
+        flint_fprintf(file,");\n");
+
+
+        fclose(file);
+
+
+        // Not at the end 
+        nmod_poly_mat_multiply(D, Q, D);
+
+
+    } // main loop for new columns
+
+    nmod_poly_mat_clear(P);
+    nmod_poly_mat_clear(Q);
+    nmod_poly_mat_clear(D);
+    nmod_poly_mat_clear(TN);
+    nmod_poly_mat_clear(v);
+    nmod_poly_mat_clear(w);
+    nmod_poly_mat_clear(B);
+    nmod_poly_mat_clear(ker);
+}
 
 
 
 
-        // intervertir Pnew P  Qnew Q 
 
-    }
+slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n) 
+{
+    int i,j;
 
-
-
-
-
+    slong nz;
 
     /**
      *  Resultant and inverse of Py
      *  ---------------------------
      */
 
-    
+    ulong prime;
+    prime = nmod_poly_mat_modulus(PT);
+
+    slong r = (PT->r)-1;
+
+    slong d=nmod_poly_mat_degree(PT);
+
+
     nmod_poly_t Delta; 
     nmod_poly_init(Delta,prime);
-
-    nmod_poly_t Deltak; 
-    nmod_poly_init(Deltak,prime);
-
-    nmod_poly_t iDelta; 
-    nmod_poly_init(iDelta,prime);
-
-    nmod_poly_t iDeltak; 
-    nmod_poly_init(iDeltak,prime);
-
-    nmod_poly_t tpol; 
-    nmod_poly_init(tpol,prime);
 
     nmod_poly_mat_t iPyT;
     nmod_poly_mat_init(iPyT,r,1,prime);
 
 
+    nmod_biv_resultant_geometric(Delta, iPyT, PT);
 
 
+    /** 
+     *  Starting for the pseudo-Krylov matrix 
+     *  -------------------------------------
+     */
 
+    nmod_poly_mat_t PxT;
+    nmod_poly_mat_init(PxT,r+1,1,prime);
+
+
+    // negation sign included 
+    for (i=0; i<r+1; i++)
+    {
+        nmod_poly_derivative(nmod_poly_mat_entry(PxT, i, 0),nmod_poly_mat_entry(PT, i, 0));
+        nmod_poly_scalar_mul_nmod(nmod_poly_mat_entry(PxT, i, 0),nmod_poly_mat_entry(PxT, i, 0),prime-1);
+    }
+
+
+    /** Precomputation of C = -Px (Py)^(-1)
+     *  -----------------------------------
+     */
+
+    ulong D;
+
+    D=(2*r-1)*d-1;   // M^* and Y  (2r-2)d + (d-1)
+
+    nmod_poly_mat_t  CT;
+    nmod_poly_mat_init(CT,r,1,prime);
+
+    nmod_biv_mulmod_geometric(CT, PxT, iPyT, PT, D); 
+
+
+    /**  Randomized Computation of phi_1 and phi_2 (non monic)
+     *   -----------------------------------------------------
+     */
+
+    nmod_poly_t phi1,phi2;
+    nmod_poly_init(phi1,prime);
+    nmod_poly_init(phi2,prime);
+
+
+    nmod_phi_T(phi1, phi2, CT, PT, Delta);
+
+    flint_printf("\n deg phi1: %ld\n",nmod_poly_degree(phi1));
+
+    /** 
+     *   !!!! Version not using phi1
+     *   ---------------------------
+     */
+
+    nmod_poly_set(phi1,Delta);
+
+
+    nmod_poly_t g;
+    nmod_poly_init(g,prime);
+    nmod_poly_div(g,Delta,phi1);
+
+
+    /** Computation of T 
+     *  ----------------
+     */
+
+    nmod_poly_mat_t Yk, T, temp;
+
+    nmod_poly_mat_init(Yk,r,1,prime);
+    nmod_poly_mat_init(temp,r,1,prime);
+
+    nmod_poly_mat_init(T,r,r,prime);
+
+
+    for (i=0; i<r; i++)
+    {
+        nmod_poly_zero(nmod_poly_mat_entry(T, i, 0)); 
+    }
+
+    for (j=1; j<r; j++)
+    {
+        for (i=0; i<r; i++)
+        {
+            nmod_poly_zero(nmod_poly_mat_entry(Yk, i, 0));
+        }
+        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(Yk, j, 0), 0, 1);
+
+        nmod_apply_T(temp, Yk, CT, PT, D); 
+
+        for (i=0; i<r; i++)
+        {
+            nmod_poly_div(nmod_poly_mat_entry(T, i, j), nmod_poly_mat_entry(temp, i, 0), g);
+        }
+    }
+
+
+    nmod_poly_mat_t B;
+    nmod_poly_mat_init(B,2*r,r,prime);
+    nmod_poly_mat_zero(B);
+
+    nmod_poly_mat_t ker;
+    nmod_poly_mat_init(ker,2*r,2*r,prime);
+
+    slong pivind[2*r];
+    slong shift[2*r];
+
+    for (i=0; i<2*r; i++)
+    {
+        shift[i]=0;
+    }
+
+
+    for (i=0; i<r; i++)
+    {
+        for (j=0; j<r; j++)
+        {
+                nmod_poly_neg(nmod_poly_mat_entry(B, i, j), nmod_poly_mat_entry(T, i, j));
+        }
+        nmod_poly_set(nmod_poly_mat_entry(B, i+r, i), Delta);
+    }
+
+    nmod_poly_mat_print_pretty(B,"x");
+
+    nmod_poly_mat_kernel(ker, pivind, shift, B, ORD_WEAK_POPOV, ROW_UPPER);
+
+    nmod_poly_mat_t P;
+    nmod_poly_mat_init(P,r,r,prime);
+
+    nmod_poly_mat_t Q;
+    nmod_poly_mat_init(Q,r,r,prime);
+
+    for (i=0; i<r; i++)
+    {
+        for (j=0; j<r; j++)
+        {
+            nmod_poly_set(nmod_poly_mat_entry(Q, i, j), nmod_poly_mat_entry(ker, i, j));
+            nmod_poly_set(nmod_poly_mat_entry(P, i, j), nmod_poly_mat_entry(ker, i, j+r));
+        }
+    }
+
+
+        char namef[500];
+
+        FILE* file;
+
+        sprintf(namef,"res.txt");
+
+        file = fopen(namef, "w");
+
+        flint_fprintf(file,"T2:=Matrix(");
+        nmod_poly_mat_fprint_pretty(file,T,"x");
+        flint_fprintf(file,");\n");
+
+        flint_fprintf(file,"P2:=Matrix(");
+        nmod_poly_mat_fprint_pretty(file,P,"x");
+        flint_fprintf(file,");\n");
+
+        flint_fprintf(file,"Q2:=Matrix(");
+        nmod_poly_mat_fprint_pretty(file,Q,"x");
+        flint_fprintf(file,");\n");
+
+        fclose(file);
+
+
+    // t=0.0;
+    // tt=clock();
+
+    // nz=nmod_poly_mat_nullspace(LT,K);
+
+    // t += (double)(clock()-tt) / CLOCKS_PER_SEC;
+    // flint_printf("\n Flint kernel naive: %.3f sec.    Tot.: %.3f sec.\n", t, tc+t);
+
+
+    // nmod_poly_mat_clear(iPyT);
+    // nmod_poly_mat_clear(PxT);
+    // nmod_poly_mat_clear(CT);
+    // nmod_poly_mat_clear(K);
+        
+    // nmod_poly_clear(Delta);
+    // nmod_poly_clear(phi1);
+    // nmod_poly_clear(phi2);
+    // nmod_poly_clear(tpol);
+
+    return nz; 
+}
 
 
 
