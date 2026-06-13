@@ -140,6 +140,14 @@ void iterative_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const 
 
 slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
 
+void _rec_pseudo_krylov(nmod_poly_mat_t D1, nmod_poly_mat_t N1, \
+                        nmod_poly_mat_t P1, nmod_poly_mat_t Q1, \
+                        const nmod_poly_mat_t P, const nmod_poly_mat_t Q,\
+                                 const nmod_poly_mat_t a, const slong k);
+
+void rec_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const nmod_poly_mat_t iQ,\
+                                 const nmod_poly_mat_t a, const slong n);
+
 
 /** CRT for Krylov polynomial matrix ready for kernel
  * 

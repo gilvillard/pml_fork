@@ -2352,7 +2352,7 @@ void iterative_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const 
 
         nmod_poly_mat_multiply(TNk, Q, Nk);
 
-        nmod_poly_mat_print_pretty(TNk,"x");
+        //nmod_poly_mat_print_pretty(TNk,"x");
 
         for (i=0; i<r; i++)
         {
@@ -2366,7 +2366,7 @@ void iterative_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const 
         nmod_poly_mat_window_clear(TNk);
         nmod_poly_mat_window_clear(Nk);
 
-        nmod_poly_mat_print_pretty(N,"x");
+        //nmod_poly_mat_print_pretty(N,"x");
 
 
         // map(t->Normal(t) mod q, (P[i-1]-diff(Q[i-1],x)).(1/Q[i-1])): 
@@ -2434,6 +2434,238 @@ void iterative_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const 
     nmod_poly_mat_clear(ker);
 }
 
+
+
+
+void _rec_pseudo_krylov(nmod_poly_mat_t D1, nmod_poly_mat_t N1, \
+                        nmod_poly_mat_t P1, nmod_poly_mat_t Q1, \
+                        const nmod_poly_mat_t P, const nmod_poly_mat_t Q,\
+                                 const nmod_poly_mat_t a, const slong k) 
+{
+
+    int i,j;
+
+    ulong prime;
+    prime = nmod_poly_mat_modulus(P);
+
+    slong r = (P->r);
+
+    if (k==1)
+    {
+        nmod_poly_mat_t(B);
+        nmod_poly_mat_init(B,2*r,r,prime);
+        nmod_poly_mat_zero(B);
+
+        nmod_poly_mat_t(ker);
+        nmod_poly_mat_init(ker,2*r,2*r,prime);
+
+        slong pivind[2*r];
+        slong shift[2*r];
+
+        for (i=0; i<2*r; i++)
+        {
+            shift[i]=0;
+        }
+
+
+        for (i=0; i<r; i++)
+        {
+            for (j=0; j<r; j++)
+            {
+
+                nmod_poly_derivative(nmod_poly_mat_entry(B, i, j), nmod_poly_mat_entry(Q, i, j));
+                nmod_poly_sub(nmod_poly_mat_entry(B, i, j),\
+                                nmod_poly_mat_entry(B, i, j),nmod_poly_mat_entry(P, i, j));
+
+                nmod_poly_set(nmod_poly_mat_entry(B, i+r, j), nmod_poly_mat_entry(Q, i, j));
+            }
+        }
+
+        nmod_poly_mat_kernel(ker, pivind, shift, B, ORD_WEAK_POPOV, ROW_UPPER);
+
+
+        for (i=0; i<r; i++)
+        {
+            for (j=0; j<r; j++)
+            {
+                nmod_poly_set(nmod_poly_mat_entry(Q1, i, j), nmod_poly_mat_entry(ker, i, j));
+                nmod_poly_set(nmod_poly_mat_entry(P1, i, j), nmod_poly_mat_entry(ker, i, j+r));
+            }
+        }
+
+
+        nmod_poly_mat_set(D1,Q);
+
+
+        nmod_poly_mat_t(v);
+        nmod_poly_mat_init(v,r,1,prime);
+
+        for (i=0; i<r; i++)
+        {
+            nmod_poly_set(nmod_poly_mat_entry(v, i, 0), nmod_poly_mat_entry(a, i, 0));
+        }
+
+        nmod_poly_mat_multiply(N1, P, v);
+
+        
+        for (i=0; i<r; i++)
+        {
+            nmod_poly_derivative(nmod_poly_mat_entry(v, i, 0), nmod_poly_mat_entry(a, i, 0));
+        }
+
+        nmod_poly_mat_multiply(v, Q, v);
+
+        nmod_poly_mat_add(N1, N1, v);
+
+
+        nmod_poly_mat_clear(B);
+        nmod_poly_mat_clear(ker);
+        nmod_poly_mat_clear(v);
+
+    } // k=1
+    else 
+    {
+        nmod_poly_mat_t(TD);
+        nmod_poly_mat_init(TD,r,r,prime);
+
+        nmod_poly_mat_t(TP);
+        nmod_poly_mat_init(TP,r,r,prime);
+
+        nmod_poly_mat_t(TQ);
+        nmod_poly_mat_init(TQ,r,r,prime);
+
+
+        slong k1;
+        k1 = ((slong) ceil((double) k/2));
+
+        //printf("\n k1: %ld\n",k1);
+
+        nmod_poly_mat_t(TN);
+        nmod_poly_mat_init(TN,r,k1,prime);
+
+        _rec_pseudo_krylov(TD, TN, TP, TQ, P, Q, a, k1);
+
+        nmod_poly_mat_t(v);
+        nmod_poly_mat_init(v,r,1,prime);
+
+        for (i=0; i<r; i++)
+        {
+            nmod_poly_set(nmod_poly_mat_entry(v, i, 0), nmod_poly_mat_entry(TN, i, k1-1));
+        }
+
+
+        slong k2;
+        k2 = k-((slong) ceil((double) k/2));
+
+        nmod_poly_mat_t(TN2);
+        nmod_poly_mat_init(TN2,r,k2,prime);
+
+        _rec_pseudo_krylov(D1, TN2, P1, Q1, TP, TQ, v, k2);
+
+        nmod_poly_mat_multiply(TN, D1, TN);
+
+        for (i=0; i<r; i++)
+        {
+            for (j=0; j<k1; j++)
+            {
+                nmod_poly_set(nmod_poly_mat_entry(N1, i, j), nmod_poly_mat_entry(TN, i, j));
+            }
+        }
+
+        for (i=0; i<r; i++)
+        {
+            for (j=0; j<k2; j++)
+            {
+                nmod_poly_set(nmod_poly_mat_entry(N1, i, j+k1), nmod_poly_mat_entry(TN2, i, j));
+            }
+        }
+
+
+        nmod_poly_mat_multiply(D1, D1, TD);
+
+
+        nmod_poly_mat_clear(TD);
+        nmod_poly_mat_clear(TP);
+        nmod_poly_mat_clear(TQ);
+        nmod_poly_mat_clear(TN);
+        nmod_poly_mat_clear(v);
+        nmod_poly_mat_clear(TN2);
+    }
+
+}
+
+
+void rec_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const nmod_poly_mat_t iQ,\
+                                 const nmod_poly_mat_t a, const slong n) 
+{
+
+
+    int i,j;
+
+    ulong prime;
+    prime = nmod_poly_mat_modulus(iP);
+
+    slong r = (iP->r);
+
+    nmod_poly_mat_t(D1);
+    nmod_poly_mat_init(D1,r,r,prime);
+
+    nmod_poly_mat_t(N1);
+    nmod_poly_mat_init(N1,r,n-1,prime);
+
+    nmod_poly_mat_t(P1);
+    nmod_poly_mat_init(P1,r,r,prime);
+
+    nmod_poly_mat_t(Q1);
+    nmod_poly_mat_init(Q1,r,r,prime);
+
+
+    _rec_pseudo_krylov(D1, N1, P1, Q1, iP, iQ, a, n-1);
+                      
+
+    nmod_poly_mat_t(v);
+    nmod_poly_mat_init(v,r,1,prime);
+
+    nmod_poly_mat_multiply(v,D1,a);
+
+
+    for (i=0; i<r; i++)
+    {
+        nmod_poly_set(nmod_poly_mat_entry(N, i, 0), nmod_poly_mat_entry(v, i, 0));
+
+        for (j=1; j<n; j++)
+        {
+            nmod_poly_set(nmod_poly_mat_entry(N, i, j), nmod_poly_mat_entry(N1, i, j-1));
+        }
+
+    }
+
+    char namef[500];
+
+        FILE* file;
+
+        sprintf(namef,"res.txt");
+
+        file = fopen(namef, "w");
+
+        flint_fprintf(file,"D2:=Matrix(");
+        nmod_poly_mat_fprint_pretty(file,D1,"x");
+        flint_fprintf(file,");\n");
+
+        flint_fprintf(file,"N2:=Matrix(");
+        nmod_poly_mat_fprint_pretty(file,N,"x");
+        flint_fprintf(file,");\n");
+
+
+        fclose(file);
+
+
+    nmod_poly_mat_clear(D1);
+    nmod_poly_mat_clear(N1);
+    nmod_poly_mat_clear(P1);
+    nmod_poly_mat_clear(Q1);
+    nmod_poly_mat_clear(v);
+}
 
 
 
@@ -2583,7 +2815,7 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
         nmod_poly_set(nmod_poly_mat_entry(B, i+r, i), Delta);
     }
 
-    nmod_poly_mat_print_pretty(B,"x");
+    //nmod_poly_mat_print_pretty(B,"x");
 
     nmod_poly_mat_kernel(ker, pivind, shift, B, ORD_WEAK_POPOV, ROW_UPPER);
 
@@ -2603,47 +2835,27 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
     }
 
 
-        char namef[500];
-
-        FILE* file;
-
-        sprintf(namef,"res.txt");
-
-        file = fopen(namef, "w");
-
-        flint_fprintf(file,"T2:=Matrix(");
-        nmod_poly_mat_fprint_pretty(file,T,"x");
-        flint_fprintf(file,");\n");
-
-        flint_fprintf(file,"P2:=Matrix(");
-        nmod_poly_mat_fprint_pretty(file,P,"x");
-        flint_fprintf(file,");\n");
-
-        flint_fprintf(file,"Q2:=Matrix(");
-        nmod_poly_mat_fprint_pretty(file,Q,"x");
-        flint_fprintf(file,");\n");
-
-        fclose(file);
+    nmod_poly_mat_t K;
+    nmod_poly_mat_init(K,r,n,prime);
 
 
-    // t=0.0;
-    // tt=clock();
-
-    // nz=nmod_poly_mat_nullspace(LT,K);
-
-    // t += (double)(clock()-tt) / CLOCKS_PER_SEC;
-    // flint_printf("\n Flint kernel naive: %.3f sec.    Tot.: %.3f sec.\n", t, tc+t);
+    nmod_poly_mat_zero(Yk);
+    nmod_poly_set_coeff_ui(nmod_poly_mat_entry(Yk, 1, 0), 0, 1);
 
 
-    // nmod_poly_mat_clear(iPyT);
-    // nmod_poly_mat_clear(PxT);
-    // nmod_poly_mat_clear(CT);
-    // nmod_poly_mat_clear(K);
-        
-    // nmod_poly_clear(Delta);
-    // nmod_poly_clear(phi1);
-    // nmod_poly_clear(phi2);
-    // nmod_poly_clear(tpol);
+    rec_pseudo_krylov(K, P, Q, Yk, n);
+
+
+    slong pivind_col[n];
+    slong shift_col[n];
+
+    for (i=0; i<n; i++)
+    {
+        shift_col[i]=0;
+    }
+
+
+    nz=nmod_poly_mat_kernel(LT, pivind_col, shift_col, K, ORD_WEAK_POPOV, COL_UPPER);
 
     return nz; 
 }
