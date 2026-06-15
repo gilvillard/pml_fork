@@ -2336,8 +2336,7 @@ void iterative_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const 
 
         nmod_poly_mat_multiply(v, Q, v);
 
-         
-
+        
         nmod_poly_mat_add(w, w, v);
 
          
@@ -2419,7 +2418,7 @@ void iterative_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const 
 
 
         // Not at the end 
-        nmod_poly_mat_multiply(D, Q, D);
+        //nmod_poly_mat_multiply(D, Q, D);
 
 
     } // main loop for new columns
@@ -2481,8 +2480,9 @@ void _rec_pseudo_krylov(nmod_poly_mat_t D1, nmod_poly_mat_t N1, \
             }
         }
 
-        nmod_poly_mat_kernel(ker, pivind, shift, B, ORD_WEAK_POPOV, ROW_UPPER);
 
+        nmod_poly_mat_kernel(ker, pivind, shift, B, ORD_WEAK_POPOV, ROW_UPPER);
+        
 
         for (i=0; i<r; i++)
         {
@@ -2640,24 +2640,24 @@ void rec_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const nmod_p
 
     }
 
-    char namef[500];
+    // char namef[500];
 
-        FILE* file;
+    //     FILE* file;
 
-        sprintf(namef,"res.txt");
+    //     sprintf(namef,"res.txt");
 
-        file = fopen(namef, "w");
+    //     file = fopen(namef, "w");
 
-        flint_fprintf(file,"D2:=Matrix(");
-        nmod_poly_mat_fprint_pretty(file,D1,"x");
-        flint_fprintf(file,");\n");
+    //     flint_fprintf(file,"D2:=Matrix(");
+    //     nmod_poly_mat_fprint_pretty(file,D1,"x");
+    //     flint_fprintf(file,");\n");
 
-        flint_fprintf(file,"N2:=Matrix(");
-        nmod_poly_mat_fprint_pretty(file,N,"x");
-        flint_fprintf(file,");\n");
+    //     flint_fprintf(file,"N2:=Matrix(");
+    //     nmod_poly_mat_fprint_pretty(file,N,"x");
+    //     flint_fprintf(file,");\n");
 
 
-        fclose(file);
+    //     fclose(file);
 
 
     nmod_poly_mat_clear(D1);
@@ -2675,6 +2675,7 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
     int i,j;
 
     slong nz;
+
 
     /**
      *  Resultant and inverse of Py
@@ -2694,6 +2695,12 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
 
     nmod_poly_mat_t iPyT;
     nmod_poly_mat_init(iPyT,r,1,prime);
+
+
+
+    double t=0.0;
+    clock_t tt;
+    tt=clock();
 
 
     nmod_biv_resultant_geometric(Delta, iPyT, PT);
@@ -2789,6 +2796,11 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
         }
     }
 
+   
+    t += (double)(clock()-tt) / CLOCKS_PER_SEC;
+    flint_printf("\n++ computation of T: %.3f sec.\n", t);
+    
+
 
     nmod_poly_mat_t B;
     nmod_poly_mat_init(B,2*r,r,prime);
@@ -2817,8 +2829,40 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
 
     //nmod_poly_mat_print_pretty(B,"x");
 
+    
+    //slong sigma  =  ceil((double) nmod_poly_degree(Delta)\
+                     //+ ((double) (k-1)*nmod_poly_degree(Delta))/((double) r-1));   
+
+    // degree : (2 delta) /(r-1)
+    // (m+n)*delta/FLINT_MIN(m,n) +1); 
+
+
+    nmod_poly_mat_t ker0;
+    nmod_poly_mat_init(ker0,2*r,2*r,prime);
+
+    t=0.0;
+    tt=clock();
+    nmod_poly_mat_pmbasis(ker0, shift, B, 2*nmod_poly_mat_degree(B)); 
+     t += (double)(clock()-tt) / CLOCKS_PER_SEC;
+    flint_printf("\n++ approximant: %.3f sec.\n", t);
+    
+
+    for (i=0; i<2*r; i++)
+    {
+        shift[i]=0;
+    }
+
+
+     t=0.0;
+    tt=clock();
+
     nmod_poly_mat_kernel(ker, pivind, shift, B, ORD_WEAK_POPOV, ROW_UPPER);
 
+     t += (double)(clock()-tt) / CLOCKS_PER_SEC;
+    flint_printf("\n++ kernel: %.3f sec.\n", t);
+
+
+    
     nmod_poly_mat_t P;
     nmod_poly_mat_init(P,r,r,prime);
 
@@ -2834,6 +2878,14 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
         }
     }
 
+    flint_printf("\n++ degree description: %ld %ld    degree input: %ld\n", \
+                nmod_poly_mat_degree(Q), nmod_poly_mat_degree(P), nmod_poly_mat_degree(B));
+
+    
+
+    t=0.0;
+    tt=clock();
+
 
     nmod_poly_mat_t K;
     nmod_poly_mat_init(K,r,n,prime);
@@ -2843,7 +2895,11 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
     nmod_poly_set_coeff_ui(nmod_poly_mat_entry(Yk, 1, 0), 0, 1);
 
 
-    iterative_pseudo_krylov(K, P, Q, Yk, n);
+    rec_pseudo_krylov(K, P, Q, Yk, n);
+
+
+    t += (double)(clock()-tt) / CLOCKS_PER_SEC;
+    flint_printf("\nRecursive construction: %.3f sec.\n", t);
 
 
     slong pivind_col[n];
@@ -2854,8 +2910,12 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
         shift_col[i]=0;
     }
 
-
+    t=0.0;
+    tt=clock();
     nz=nmod_poly_mat_kernel(LT, pivind_col, shift_col, K, ORD_WEAK_POPOV, COL_UPPER);
+    t += (double)(clock()-tt) / CLOCKS_PER_SEC;
+    flint_printf("\nKernel: %.3f sec.\n", t);
+
 
     return nz; 
 }
