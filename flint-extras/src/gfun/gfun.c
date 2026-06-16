@@ -2798,9 +2798,13 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
 
    
     t += (double)(clock()-tt) / CLOCKS_PER_SEC;
-    flint_printf("\n++ computation of T: %.3f sec.\n", t);
+    flint_printf("\nComputation of T: %.3f sec.\n", t);
     
 
+
+    /** Computation of a left description of T 
+     *  --------------------------------------
+     */
 
     nmod_poly_mat_t B;
     nmod_poly_mat_init(B,2*r,r,prime);
@@ -2812,76 +2816,123 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
     slong pivind[2*r];
     slong shift[2*r];
 
-    for (i=0; i<2*r; i++)
-    {
-        shift[i]=0;
-    }
-
-
-    for (i=0; i<r; i++)
-    {
-        for (j=0; j<r; j++)
-        {
-                nmod_poly_neg(nmod_poly_mat_entry(B, i, j), nmod_poly_mat_entry(T, i, j));
-        }
-        nmod_poly_set(nmod_poly_mat_entry(B, i+r, i), Delta);
-    }
-
-    //nmod_poly_mat_print_pretty(B,"x");
-
-    
-    //slong sigma  =  ceil((double) nmod_poly_degree(Delta)\
-                     //+ ((double) (k-1)*nmod_poly_degree(Delta))/((double) r-1));   
-
-    // degree : (2 delta) /(r-1)
-    // (m+n)*delta/FLINT_MIN(m,n) +1); 
-
-
-    nmod_poly_mat_t ker0;
-    nmod_poly_mat_init(ker0,2*r,2*r,prime);
-
-    t=0.0;
-    tt=clock();
-    nmod_poly_mat_pmbasis(ker0, shift, B, 2*nmod_poly_mat_degree(B)); 
-     t += (double)(clock()-tt) / CLOCKS_PER_SEC;
-    flint_printf("\n++ approximant: %.3f sec.\n", t);
-    
-
-    for (i=0; i<2*r; i++)
-    {
-        shift[i]=0;
-    }
-
-
-     t=0.0;
-    tt=clock();
-
-    nmod_poly_mat_kernel(ker, pivind, shift, B, ORD_WEAK_POPOV, ROW_UPPER);
-
-     t += (double)(clock()-tt) / CLOCKS_PER_SEC;
-    flint_printf("\n++ kernel: %.3f sec.\n", t);
-
-
-    
     nmod_poly_mat_t P;
     nmod_poly_mat_init(P,r,r,prime);
 
     nmod_poly_mat_t Q;
     nmod_poly_mat_init(Q,r,r,prime);
 
-    for (i=0; i<r; i++)
+
+
+    slong via_kernel =0;
+
+    if (via_kernel == 1)
     {
-        for (j=0; j<r; j++)
+
+        for (i=0; i<r; i++)
         {
-            nmod_poly_set(nmod_poly_mat_entry(Q, i, j), nmod_poly_mat_entry(ker, i, j));
-            nmod_poly_set(nmod_poly_mat_entry(P, i, j), nmod_poly_mat_entry(ker, i, j+r));
+            for (j=0; j<r; j++)
+            {   
+                nmod_poly_neg(nmod_poly_mat_entry(B, i, j), nmod_poly_mat_entry(T, i, j));
+            }
+            nmod_poly_set(nmod_poly_mat_entry(B, i+r, i), Delta);
         }
+
+        for (i=0; i<2*r; i++)
+        {
+            shift[i]=0;
+        }
+
+        t=0.0;
+        tt=clock();
+
+        nmod_poly_mat_kernel(ker, pivind, shift, B, ORD_WEAK_POPOV, ROW_UPPER);
+
+        t += (double)(clock()-tt) / CLOCKS_PER_SEC;
+        flint_printf("\nDescription of T, via ZLS kernel: %.3f sec.\n", t);
+
+
+        for (i=0; i<r; i++)
+        {
+            for (j=0; j<r; j++)
+            {
+                nmod_poly_set(nmod_poly_mat_entry(Q, i, j), nmod_poly_mat_entry(ker, i, j));
+                nmod_poly_set(nmod_poly_mat_entry(P, i, j), nmod_poly_mat_entry(ker, i, j+r));
+            }
+        }
+
     }
+    else   // via truncated approximant, similar to description.c
+    {
+        // Counting on column less on the right (zero column in T)
+        slong target_degree;
+        target_degree =  ceil((double) nmod_poly_degree(phi1)/((double) r-1));   
+
+        slong sigma;
+        sigma = ceil(((double) (2*r)*target_degree)/((double) r) +1);
+
+
+        t=0.0;
+        tt=clock();
+
+
+        // Truncated  B 
+        for (i=0; i<r; i++)
+        {
+            for (j=0; j<r; j++)
+            {
+                nmod_poly_neg(nmod_poly_mat_entry(B, i, j), nmod_poly_mat_entry(T, i, j));
+                nmod_poly_truncate(nmod_poly_mat_entry(B, i, j),sigma);
+            }
+            nmod_poly_set_trunc(nmod_poly_mat_entry(B, i+r, i), Delta,sigma);
+        }
+
+        for (i=0; i<2*r; i++)
+        {
+            shift[i]=0;
+        }
+
+
+        
+        nmod_poly_mat_pmbasis(ker, shift, B, sigma); 
+        t += (double)(clock()-tt) / CLOCKS_PER_SEC;
+        flint_printf("\nDescription of T, via truncated approximant: %.3f sec.\n", t);
+
+
+        slong nbrows=0;
+
+        for (i = 0; i < 2*r; i++) 
+        {
+            if (shift[i] <= target_degree) 
+            {
+                for (j=0; j<r; j++)
+                {
+                    nmod_poly_set(nmod_poly_mat_entry(Q, nbrows, j), nmod_poly_mat_entry(ker, i, j));
+                    nmod_poly_set(nmod_poly_mat_entry(P, nbrows, j), nmod_poly_mat_entry(ker, i, j+r));
+                }
+                nbrows +=1;     
+
+                if (nbrows >r)
+                    flint_printf("\nA complete description of degree at most %{slong} may not exist\n", target_degree);
+
+            }  
+        }
+
+
+
+        
+
+    }
+    
 
     flint_printf("\n++ degree description: %ld %ld    degree input: %ld\n", \
                 nmod_poly_mat_degree(Q), nmod_poly_mat_degree(P), nmod_poly_mat_degree(B));
 
     
+
+    /** Starting with the recursive description of K
+     *  --------------------------------------------
+     */
 
     t=0.0;
     tt=clock();
@@ -2899,7 +2950,7 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
 
 
     t += (double)(clock()-tt) / CLOCKS_PER_SEC;
-    flint_printf("\nRecursive construction: %.3f sec.\n", t);
+    flint_printf("\nRecursive construction of K: %.3f sec.\n", t);
 
 
     slong pivind_col[n];
@@ -2914,7 +2965,7 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
     tt=clock();
     nz=nmod_poly_mat_kernel(LT, pivind_col, shift_col, K, ORD_WEAK_POPOV, COL_UPPER);
     t += (double)(clock()-tt) / CLOCKS_PER_SEC;
-    flint_printf("\nKernel: %.3f sec.\n", t);
+    flint_printf("\nFinal ZLS kernel: %.3f sec.\n", t);
 
 
     return nz; 
