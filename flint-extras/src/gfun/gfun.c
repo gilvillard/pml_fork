@@ -1433,7 +1433,7 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
 
 
     tc += (double)(clock()-ttc) / CLOCKS_PER_SEC;
-    flint_printf("\n Construction series: %.3f sec.\n", tc);
+    flint_printf("\n .. Construction series: %.3f sec.\n", tc);
     
     // char namef[500];
 
@@ -1480,9 +1480,12 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
         tta=clock();
         nmod_poly_mat_right_description(NN, DD, K, target_degree);
         ta += (double)(clock()-tta) / CLOCKS_PER_SEC;
-        flint_printf("\n Right approximant series: %.3f sec.\n", ta);
+        flint_printf("\n .. Right approximant series: %.3f sec.\n", ta);
 
-        flint_printf("\n Degree of the right description: %ld, %ld\n", \
+        flint_printf("\n      from a degree %ld in K\n", \
+                        nmod_poly_mat_degree(K));
+
+        flint_printf("\n    Degree of the right description: %ld, %ld\n", \
                         nmod_poly_mat_degree(DD),nmod_poly_mat_degree(NN));
 
         double t=0.0;
@@ -1492,7 +1495,10 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
         nz=nmod_poly_mat_kernel(LT, pivind, shift, NN, ORD_WEAK_POPOV, COL_UPPER);
 
         t += (double)(clock()-tt) / CLOCKS_PER_SEC;
-        flint_printf("\n ZLS kernel series: %.3f sec. \n", t);
+        flint_printf("\n .. ZLS kernel series: %.3f sec. \n", t);
+
+        flint_printf("\n      from a degree %ld in NN\n", \
+                        nmod_poly_mat_degree(NN));
 
 
         double t2=0.0;
@@ -1508,14 +1514,15 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
         nmod_poly_mat_multiply(S, DD, S);
     
         t2 += (double)(clock()-tt) / CLOCKS_PER_SEC;
-        flint_printf("\n multiply series: %.3f sec.  Tot.: %.3f sec. \n", t2, t2+t+tc+ta);
+        flint_printf("\n    multiply series: %.3f sec. \n", t2);
+        
 
 
         for (i=0; i<n; i++)
             for (j=0; j<nz; j++)
                 nmod_poly_set(nmod_poly_mat_entry(LT, i, j),nmod_poly_mat_entry(S, i, j));
 
-        flint_printf("\n Polynomial matrices series: %.3f sec. \n", ta +t + t2);
+        flint_printf("\n    total polynomial matrices series: %.3f sec.  Tot.: %.3f sec. \n", ta +t + t2,t2+t+tc+ta);
 
         //nmod_poly_mat_clear(S);
         nmod_poly_mat_clear(S);
