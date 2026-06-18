@@ -2391,6 +2391,7 @@ void iterative_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const 
             }
         }
 
+
         nmod_poly_mat_kernel(ker, pivind, shift, B, ORD_WEAK_POPOV, ROW_UPPER);
 
 
@@ -2446,7 +2447,7 @@ void iterative_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const 
 void _rec_pseudo_krylov(nmod_poly_mat_t D1, nmod_poly_mat_t N1, \
                         nmod_poly_mat_t P1, nmod_poly_mat_t Q1, \
                         const nmod_poly_mat_t P, const nmod_poly_mat_t Q,\
-                                 const nmod_poly_mat_t a, const slong k) 
+                                 const nmod_poly_mat_t a, const slong k, slong * rdeg) 
 {
 
     int i,j;
@@ -2468,11 +2469,6 @@ void _rec_pseudo_krylov(nmod_poly_mat_t D1, nmod_poly_mat_t N1, \
         slong pivind[2*r];
         slong shift[2*r];
 
-        for (i=0; i<2*r; i++)
-        {
-            shift[i]=0;
-        }
-
 
         for (i=0; i<r; i++)
         {
@@ -2488,7 +2484,29 @@ void _rec_pseudo_krylov(nmod_poly_mat_t D1, nmod_poly_mat_t N1, \
         }
 
 
-        nmod_poly_mat_kernel(ker, pivind, shift, B, ORD_WEAK_POPOV, ROW_UPPER);
+        for (i=0; i<2*r; i++)
+        {
+            shift[i]=0;
+        }
+
+        // TMP**
+
+        // slong rdeg[2*r];
+
+        // nmod_poly_mat_row_degree(rdeg, B, shift);
+
+        // for (i=0; i<r; i++)
+        // {
+        //     rdeg[i]=0;
+        // }
+
+
+        // for (i=0; i<2*r; i++)
+        // {
+        //     shift[i]=0;
+        // }
+
+        nmod_poly_mat_kernel(ker, pivind, rdeg, B, ORD_WEAK_POPOV, ROW_UPPER);
         
 
         for (i=0; i<r; i++)
@@ -2550,7 +2568,7 @@ void _rec_pseudo_krylov(nmod_poly_mat_t D1, nmod_poly_mat_t N1, \
         nmod_poly_mat_t(TN);
         nmod_poly_mat_init(TN,r,k1,prime);
 
-        _rec_pseudo_krylov(TD, TN, TP, TQ, P, Q, a, k1);
+        _rec_pseudo_krylov(TD, TN, TP, TQ, P, Q, a, k1, rdeg);
 
         nmod_poly_mat_t(v);
         nmod_poly_mat_init(v,r,1,prime);
@@ -2567,7 +2585,18 @@ void _rec_pseudo_krylov(nmod_poly_mat_t D1, nmod_poly_mat_t N1, \
         nmod_poly_mat_t(TN2);
         nmod_poly_mat_init(TN2,r,k2,prime);
 
-        _rec_pseudo_krylov(D1, TN2, P1, Q1, TP, TQ, v, k2);
+
+        slong degTD[r];
+        nmod_poly_mat_row_degree(degTD, TD, NULL);
+
+        slong newdeg[2*r];
+        for (i=0; i<r; i++)
+        {
+            newdeg[i]=0;
+            newdeg[i+r] = degTD[i];
+        }
+
+        _rec_pseudo_krylov(D1, TN2, P1, Q1, TP, TQ, v, k2, rdeg);
 
         nmod_poly_mat_multiply(TN, D1, TN);
 
@@ -2589,7 +2618,7 @@ void _rec_pseudo_krylov(nmod_poly_mat_t D1, nmod_poly_mat_t N1, \
 
 
         nmod_poly_mat_multiply(D1, D1, TD);
-
+        
 
         nmod_poly_mat_clear(TD);
         nmod_poly_mat_clear(TP);
@@ -2627,7 +2656,45 @@ void rec_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const nmod_p
     nmod_poly_mat_init(Q1,r,r,prime);
 
 
-    _rec_pseudo_krylov(D1, N1, P1, Q1, iP, iQ, a, n-1);
+    slong degiQ[r];
+    nmod_poly_mat_row_degree(degiQ, iQ, NULL);
+
+    slong newdeg[2*r];
+    for (i=0; i<r; i++)
+    {
+        newdeg[i]=0;
+        newdeg[i+r] = degiQ[i];
+    }
+
+    _rec_pseudo_krylov(D1, N1, P1, Q1, iP, iQ, a, n-1,newdeg);
+
+
+    // TMP 
+    // ===============
+
+        slong rdeg[r];
+        slong tshift[r];
+        for (i=0; i<r; i++)
+        {
+            tshift[i]=0;
+        }
+
+        nmod_poly_mat_row_degree(rdeg, D1, tshift);
+        flint_printf("\n    row degrees D %{slong*}\n", rdeg, r);
+
+        // slong tot=0;
+        // for (i=0; i<r; i++)
+        // {
+        //     tot += rdeg[i];
+        // }
+
+        // nmod_poly_t(det);
+        // nmod_poly_init(det,prime);
+        // nmod_poly_mat_det_iter(det, D1);
+
+        //flint_printf("\n    determinant degree: %ld      degree sum: %ld    diff: %ld\n", \
+                            //nmod_poly_degree(det,tot,tot-nmod_poly_degree(det));
+
                       
 
     nmod_poly_mat_t(v);
@@ -2755,7 +2822,7 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
 
     nmod_phi_T(phi1, phi2, CT, PT, Delta);
 
-    flint_printf("\n deg phi1: %ld\n",nmod_poly_degree(phi1));
+    flint_printf("\n  deg phi1: %ld\n",nmod_poly_degree(phi1));
 
     /** 
      *   !!!! Version not using phi1
@@ -2805,7 +2872,7 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
 
    
     t += (double)(clock()-tt) / CLOCKS_PER_SEC;
-    flint_printf("\nComputation of T: %.3f sec.\n", t);
+    flint_printf("\n .. Computation of T: %.3f sec.\n", t);
     
 
 
@@ -2856,7 +2923,7 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
         nmod_poly_mat_kernel(ker, pivind, shift, B, ORD_WEAK_POPOV, ROW_UPPER);
 
         t += (double)(clock()-tt) / CLOCKS_PER_SEC;
-        flint_printf("\nDescription of T, via ZLS kernel: %.3f sec.\n", t);
+        flint_printf("\n    description of T, via ZLS kernel: %.3f sec.\n", t);
 
 
         for (i=0; i<r; i++)
@@ -2903,7 +2970,7 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
         
         nmod_poly_mat_pmbasis(ker, shift, B, sigma); 
         t += (double)(clock()-tt) / CLOCKS_PER_SEC;
-        flint_printf("\nDescription of T, via truncated approximant: %.3f sec.\n", t);
+        flint_printf("\n    description of T, via truncated approximant: %.3f sec.\n", t);
 
 
         slong nbrows=0;
@@ -2932,7 +2999,7 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
     }
     
 
-    flint_printf("\n++ degree description: %ld %ld    degree input: %ld\n", \
+    flint_printf("\n    degree description of T: %ld %ld    from input degree: %ld\n", \
                 nmod_poly_mat_degree(Q), nmod_poly_mat_degree(P), nmod_poly_mat_degree(B));
 
     
@@ -2957,7 +3024,7 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
 
 
     t += (double)(clock()-tt) / CLOCKS_PER_SEC;
-    flint_printf("\nRecursive construction of K: %.3f sec.\n", t);
+    flint_printf("\n .. Recursive construction of K: %.3f sec.\n", t);
 
 
     slong pivind_col[n];
@@ -2972,8 +3039,10 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
     tt=clock();
     nz=nmod_poly_mat_kernel(LT, pivind_col, shift_col, K, ORD_WEAK_POPOV, COL_UPPER);
     t += (double)(clock()-tt) / CLOCKS_PER_SEC;
-    flint_printf("\nFinal ZLS kernel: %.3f sec.\n", t);
+    flint_printf("\n .. Final ZLS kernel: %.3f sec.\n", t);
 
+    flint_printf("\n      from a degree %ld in K\n", \
+                        nmod_poly_mat_degree(K));
 
     return nz; 
 }
