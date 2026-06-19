@@ -417,7 +417,7 @@ mapml:= module()
 		m:=LinearAlgebra:-ColumnDimension(A);
 		n:=LinearAlgebra:-RowDimension(A);
 
-		sigma:=ceil((m+n)*(delta)/min(m,n) +1);
+		sigma:=ceil((m+n)*(delta)/min(m,n)+1);
 
 		M:=map(t->convert(series(t,x,sigma),polynom),A) mod q:
 		M:=map(t->modp(t,q),M);

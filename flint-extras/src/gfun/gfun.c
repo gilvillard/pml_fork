@@ -2447,7 +2447,8 @@ void iterative_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const 
 void _rec_pseudo_krylov(nmod_poly_mat_t D1, nmod_poly_mat_t N1, \
                         nmod_poly_mat_t P1, nmod_poly_mat_t Q1, \
                         const nmod_poly_mat_t P, const nmod_poly_mat_t Q,\
-                                 const nmod_poly_mat_t a, const slong k, const slong * rdeg) 
+                                 const nmod_poly_mat_t a, const slong k, \
+                                 const slong * rdeg) 
 {
 
     int i,j;
@@ -2479,10 +2480,6 @@ void _rec_pseudo_krylov(nmod_poly_mat_t D1, nmod_poly_mat_t N1, \
                 nmod_poly_set(nmod_poly_mat_entry(B, i+r, j), nmod_poly_mat_entry(Q, i, j));
             }
         }
-
-
-        slong degQ[r];
-        nmod_poly_mat_row_degree(degQ, Q, rdeg);
 
 
         slong pivind[2*r];
@@ -2602,9 +2599,8 @@ void _rec_pseudo_krylov(nmod_poly_mat_t D1, nmod_poly_mat_t N1, \
             }
         }
 
-
+       
         nmod_poly_mat_multiply(D1, D1, TD);
-        
 
         nmod_poly_mat_clear(TD);
         nmod_poly_mat_clear(TP);
@@ -2645,7 +2641,7 @@ void rec_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const nmod_p
     slong degiQ[r];
     nmod_poly_mat_row_degree(degiQ, iQ, NULL);
 
-    _rec_pseudo_krylov(D1, N1, P1, Q1, iP, iQ, a, n-1,degiQ);
+    _rec_pseudo_krylov(D1, N1, P1, Q1, iP, iQ, a, n-1, degiQ);
 
 
     // TMP 
@@ -2661,6 +2657,13 @@ void rec_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const nmod_p
         nmod_poly_mat_row_degree(rdeg, D1, tshift);
         flint_printf("\n    row degrees D %{slong*}\n", rdeg, r);
 
+
+        // verif of the normal form 
+        // nmod_poly_mat_t(tmpD);
+        // nmod_poly_mat_init(tmpD,r,r,prime);
+
+        // nmod_poly_mat_set(tmpD,D1);
+
         // slong tot=0;
         // for (i=0; i<r; i++)
         // {
@@ -2669,10 +2672,10 @@ void rec_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const nmod_p
 
         // nmod_poly_t(det);
         // nmod_poly_init(det,prime);
-        // nmod_poly_mat_det_iter(det, D1);
+        // nmod_poly_mat_det_iter(det, tmpD);
 
-        //flint_printf("\n    determinant degree: %ld      degree sum: %ld    diff: %ld\n", \
-                            //nmod_poly_degree(det,tot,tot-nmod_poly_degree(det));
+        // flint_printf("\n    determinant degree: %ld      degree sum: %ld    diff: %ld\n", \
+        //                     nmod_poly_degree(det),tot,tot-nmod_poly_degree(det));
 
                       
 
