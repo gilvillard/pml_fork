@@ -2507,7 +2507,13 @@ void _rec_pseudo_krylov(nmod_poly_mat_t D1, nmod_poly_mat_t N1, \
         //     shift[i+r]=0;
         // }
 
-        nmod_poly_mat_kernel(ker, pivind, shift, B, ORD_WEAK_POPOV, ROW_LOWER);
+        for (i=0; i<2*r; i++)
+        {
+             shift[i]=0; 
+        }
+
+
+        nmod_poly_mat_kernel(ker, pivind, shift, B, ORD_WEAK_POPOV, ROW_UPPER);
         
 
         for (i=0; i<r; i++)
@@ -2884,7 +2890,7 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
 
 
 
-    slong via_kernel =0;
+    slong via_kernel =1;
 
     if (via_kernel == 1)
     {
