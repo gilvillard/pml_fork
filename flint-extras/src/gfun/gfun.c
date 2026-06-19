@@ -2480,22 +2480,34 @@ void _rec_pseudo_krylov(nmod_poly_mat_t D1, nmod_poly_mat_t N1, \
             }
         }
 
-
-        slong degQ[r];
-        nmod_poly_mat_row_degree(degQ, Q, rdeg);
-
-
+       
         slong pivind[2*r];
         slong shift[2*r];
 
-
+        slong trdeg[2*r];
         for (i=0; i<r; i++)
         {
-            shift[i]=0;
-            shift[i+r]=degQ[i];
+            trdeg[i]=rdeg[i];
+            trdeg[i+r]=rdeg[i];
         }
 
-        nmod_poly_mat_kernel(ker, pivind, shift, B, ORD_WEAK_POPOV, ROW_UPPER);
+        nmod_poly_mat_row_degree(shift, B, trdeg);
+
+        // for (i=0; i<r; i++)
+        // {
+        //     shift[i+r]=degQ[i];
+        // }
+
+
+        //flint_printf("\n    shift %{slong*}\n", shift, 2*r);
+
+        // for (i=0; i<r; i++)
+        // {
+        //     shift[i]=0;
+        //     shift[i+r]=0;
+        // }
+
+        nmod_poly_mat_kernel(ker, pivind, shift, B, ORD_WEAK_POPOV, ROW_LOWER);
         
 
         for (i=0; i<r; i++)
@@ -2642,7 +2654,7 @@ void rec_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const nmod_p
     slong degiQ[r];
     nmod_poly_mat_row_degree(degiQ, iQ, NULL);
 
-    _rec_pseudo_krylov(D1, N1, P1, Q1, iP, iQ, a, n-1,degiQ);
+    _rec_pseudo_krylov(D1, N1, P1, Q1, iP, iQ, a, n-1, degiQ);
 
 
     // TMP 
@@ -2658,18 +2670,18 @@ void rec_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const nmod_p
         nmod_poly_mat_row_degree(rdeg, D1, tshift);
         flint_printf("\n    row degrees D %{slong*}\n", rdeg, r);
 
-        // slong tot=0;
-        // for (i=0; i<r; i++)
-        // {
-        //     tot += rdeg[i];
-        // }
+        slong tot=0;
+        for (i=0; i<r; i++)
+        {
+            tot += rdeg[i];
+        }
 
-        // nmod_poly_t(det);
-        // nmod_poly_init(det,prime);
-        // nmod_poly_mat_det_iter(det, D1);
+        nmod_poly_t(det);
+        nmod_poly_init(det,prime);
+        nmod_poly_mat_det_iter(det, D1);
 
-        //flint_printf("\n    determinant degree: %ld      degree sum: %ld    diff: %ld\n", \
-                            //nmod_poly_degree(det,tot,tot-nmod_poly_degree(det));
+        flint_printf("\n    determinant degree: %ld      degree sum: %ld    diff: %ld\n", \
+                            nmod_poly_degree(det),tot,tot-nmod_poly_degree(det));
 
                       
 
