@@ -2488,12 +2488,15 @@ void _rec_pseudo_krylov(nmod_poly_mat_t D1, nmod_poly_mat_t N1, \
         slong pivind[2*r];
         slong shift[2*r];
 
+        slong newdeg[2*r];
 
         for (i=0; i<r; i++)
         {
-            shift[i]=0;
-            shift[i+r]=degQ[i];
+            newdeg[i]=rdeg[i];
+            newdeg[i+r]=rdeg[i];
         }
+
+        nmod_poly_mat_row_degree(shift, B, newdeg);
 
         nmod_poly_mat_kernel(ker, pivind, shift, B, ORD_WEAK_POPOV, ROW_UPPER);
         
