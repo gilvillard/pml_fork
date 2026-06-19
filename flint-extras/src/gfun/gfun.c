@@ -2447,7 +2447,7 @@ void iterative_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const 
 void _rec_pseudo_krylov(nmod_poly_mat_t D1, nmod_poly_mat_t N1, \
                         nmod_poly_mat_t P1, nmod_poly_mat_t Q1, \
                         const nmod_poly_mat_t P, const nmod_poly_mat_t Q,\
-                                 const nmod_poly_mat_t a, const slong k, slong * rdeg) 
+                                 const nmod_poly_mat_t a, const slong k, const slong * rdeg) 
 {
 
     int i,j;
@@ -2466,9 +2466,6 @@ void _rec_pseudo_krylov(nmod_poly_mat_t D1, nmod_poly_mat_t N1, \
         nmod_poly_mat_t(ker);
         nmod_poly_mat_init(ker,2*r,2*r,prime);
 
-        slong pivind[2*r];
-        slong shift[2*r];
-
 
         for (i=0; i<r; i++)
         {
@@ -2484,29 +2481,21 @@ void _rec_pseudo_krylov(nmod_poly_mat_t D1, nmod_poly_mat_t N1, \
         }
 
 
-        for (i=0; i<2*r; i++)
+        slong degQ[r];
+        nmod_poly_mat_row_degree(degQ, Q, rdeg);
+
+
+        slong pivind[2*r];
+        slong shift[2*r];
+
+
+        for (i=0; i<r; i++)
         {
             shift[i]=0;
+            shift[i+r]=degQ[i];
         }
 
-        // TMP**
-
-        // slong rdeg[2*r];
-
-        // nmod_poly_mat_row_degree(rdeg, B, shift);
-
-        // for (i=0; i<r; i++)
-        // {
-        //     rdeg[i]=0;
-        // }
-
-
-        // for (i=0; i<2*r; i++)
-        // {
-        //     shift[i]=0;
-        // }
-
-        nmod_poly_mat_kernel(ker, pivind, rdeg, B, ORD_WEAK_POPOV, ROW_UPPER);
+        nmod_poly_mat_kernel(ker, pivind, shift, B, ORD_WEAK_POPOV, ROW_UPPER);
         
 
         for (i=0; i<r; i++)
@@ -2587,16 +2576,10 @@ void _rec_pseudo_krylov(nmod_poly_mat_t D1, nmod_poly_mat_t N1, \
 
 
         slong degTD[r];
-        nmod_poly_mat_row_degree(degTD, TD, NULL);
+        nmod_poly_mat_row_degree(degTD, TD, rdeg);
 
-        slong newdeg[2*r];
-        for (i=0; i<r; i++)
-        {
-            newdeg[i]=0;
-            newdeg[i+r] = degTD[i];
-        }
 
-        _rec_pseudo_krylov(D1, TN2, P1, Q1, TP, TQ, v, k2, rdeg);
+        _rec_pseudo_krylov(D1, TN2, P1, Q1, TP, TQ, v, k2, degTD);
 
         nmod_poly_mat_multiply(TN, D1, TN);
 
@@ -2659,14 +2642,7 @@ void rec_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const nmod_p
     slong degiQ[r];
     nmod_poly_mat_row_degree(degiQ, iQ, NULL);
 
-    slong newdeg[2*r];
-    for (i=0; i<r; i++)
-    {
-        newdeg[i]=0;
-        newdeg[i+r] = degiQ[i];
-    }
-
-    _rec_pseudo_krylov(D1, N1, P1, Q1, iP, iQ, a, n-1,newdeg);
+    _rec_pseudo_krylov(D1, N1, P1, Q1, iP, iQ, a, n-1,degiQ);
 
 
     // TMP 
@@ -2740,8 +2716,6 @@ void rec_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const nmod_p
     nmod_poly_mat_clear(Q1);
     nmod_poly_mat_clear(v);
 }
-
-
 
 
 slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n) 
