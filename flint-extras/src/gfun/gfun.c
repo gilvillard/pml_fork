@@ -79,12 +79,20 @@ void nmod_biv_resultant_geometric(nmod_poly_t Delta, nmod_poly_mat_t  iPyT, cons
     slong d;
     d = nmod_poly_mat_degree(PT);
 
+    double time=0.0;
+    clock_t ttime;
+
+    ttime=clock();
+
     // Bound on the degree of the resultant + 1
     L = (2*r-1)*d+1;  
     nmod_init(&mod, prime);
 
     w = nmod_find_root(2*L, mod);
     nmod_geometric_progression_init(F, w, L, mod);
+
+    time += (double)(clock()-ttime) / CLOCKS_PER_SEC;
+    flint_printf("\n geometric progression: %.3f sec.\n", time);
 
 
     int i,j;
@@ -832,6 +840,11 @@ void nmod_pseudo_Krylov(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t 
     nmod_poly_set_coeff_ui(nmod_poly_mat_entry(K, 1, 0), 0, 1);
 
 
+    double time=0.0;
+    clock_t ttime;
+    
+
+
     /** Main loop, for the n-1 new colmuns of K
      *  ---------------------------------------
      */
@@ -841,6 +854,7 @@ void nmod_pseudo_Krylov(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t 
     for (int k=0; k<n-1; k++)
     {
 
+        ttime=clock();
 
         for (i=0; i<r; i++)
         {
@@ -877,6 +891,9 @@ void nmod_pseudo_Krylov(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t 
 
             nmod_poly_sub(nmod_poly_mat_entry(K, i, k+1),nmod_poly_mat_entry(K, i, k+1),p2);
         }
+
+        time += (double)(clock()-ttime) / CLOCKS_PER_SEC;
+        flint_printf("\n K: %ld-th column: %.3f sec.\n", k+1, time);
 
     } // main loop on the columns of K 
 
@@ -1073,8 +1090,18 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
     ttc=clock();
 
 
+    double time=0.0;
+    clock_t ttime;
+    ttime=clock();
+
     nmod_biv_resultant_geometric(Delta, iPyT, PT);
 
+    time += (double)(clock()-ttime) / CLOCKS_PER_SEC;
+
+    flint_printf("\n time resultant: %.3f sec.\n", time);
+
+
+    ttime=clock();
 
     /** 
      *  Starting for the pseudo-Krylov matrix 
@@ -1118,6 +1145,12 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
 
     nmod_phi_T(phi1, phi2, CT, PT, Delta);
 
+    time += (double)(clock()-ttime) / CLOCKS_PER_SEC;
+
+    flint_printf("\n time precomputation: %.3f sec.\n", time);
+
+
+    flint_printf("\n deg Delta: %ld\n",nmod_poly_degree(Delta));
     flint_printf("\n deg phi1: %ld\n",nmod_poly_degree(phi1));
 
     /** 
@@ -1125,7 +1158,7 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
      *   ---------------------------
      */
 
-    nmod_poly_set(phi1,Delta);
+    //nmod_poly_set(phi1,Delta);
 
      /**  Computation of the numerators of K w.r.t. phi1
      *   -----------------------------------------------
@@ -1248,7 +1281,7 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
  *    
  */ 
 
-slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong k) 
+slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n) 
 {
     int i,j;
 
@@ -1283,8 +1316,6 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
     nmod_poly_mat_t iPyT;
     nmod_poly_mat_init(iPyT,r,1,prime);
 
-
-    slong n=r+k;
 
     nmod_poly_mat_t K;
     nmod_poly_mat_init(K,r,n,prime);
@@ -1336,8 +1367,11 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
 
     slong target_degree;
 
-    target_degree =  ceil((double) nmod_poly_degree(Delta)\
-                     + ((double) (k-1)*nmod_poly_degree(Delta))/((double) r-1));   
+    // TODO with k when left description considered for n larger than r 
+    // and rightdes = 0 
+
+    //target_degree =  ceil((double) nmod_poly_degree(Delta)\
+      //               + ((double) (k-1)*nmod_poly_degree(Delta))/((double) r-1));   
 
     
     target_degree =  nmod_poly_degree(Delta);
@@ -1345,18 +1379,21 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
     // Choice of right or left description-based strategy 
     slong right_des = 1;
 
-    if (right_des == 0)
-    {
-        slong extra_guessed; 
-        extra_guessed =  ceil(  ((double) (k-1)*(nmod_poly_degree(Delta)-d))   / ((double) r-1)   );   
-        target_degree += extra_guessed; 
-    }
+    // if (right_des == 0)
+    // {
+    //     slong extra_guessed; 
+    //     extra_guessed =  ceil(  ((double) (k-1)*(nmod_poly_degree(Delta)-d))   / ((double) r-1)   );   
+    //     target_degree += extra_guessed; 
+    // }
    
 
     // Target truncation order for the descripion 
 
     slong sigma;
-    sigma = ceil(((double) (r+n)*target_degree)/((double) r) +1);
+    if (n <=r) 
+        sigma = ceil(((double) (r+n)*target_degree)/((double) n) +1);
+    else 
+        sigma = ceil(((double) (r+n)*target_degree)/((double) r) +1);
 
     slong N;
     N = sigma + (n-1); // Including the order for the derivation 
@@ -1603,7 +1640,7 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
 
 
 
-slong nmod_algeq_to_diffeq_new(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong k) 
+slong nmod_algeq_to_diffeq_new(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n) 
 {
    
     ulong prime;
@@ -1616,8 +1653,6 @@ slong nmod_algeq_to_diffeq_new(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, con
 
 
     slong d=nmod_poly_mat_degree(PT);
-
-    ulong n = r+k;
 
 
     /**
