@@ -72,6 +72,9 @@ void nmod_apply_T(nmod_poly_mat_t  RT, const nmod_poly_mat_t AT, const nmod_poly
  * 
  */
 
+void nmod_phi1(nmod_poly_t  phi1, const nmod_poly_mat_t CT, \
+                     const nmod_poly_mat_t PT, const nmod_poly_t Delta);
+
 void nmod_phi_T(nmod_poly_t  phi1, nmod_poly_t  phi2, const nmod_poly_mat_t CT, \
                      const nmod_poly_mat_t PT, const nmod_poly_t Delta);
 

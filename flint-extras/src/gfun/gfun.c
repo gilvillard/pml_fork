@@ -79,10 +79,6 @@ void nmod_biv_resultant_geometric(nmod_poly_t Delta, nmod_poly_mat_t  iPyT, cons
     slong d;
     d = nmod_poly_mat_degree(PT);
 
-    double time=0.0;
-    clock_t ttime;
-
-    ttime=clock();
 
     // Bound on the degree of the resultant + 1
     L = (2*r-1)*d+1;  
@@ -90,9 +86,6 @@ void nmod_biv_resultant_geometric(nmod_poly_t Delta, nmod_poly_mat_t  iPyT, cons
 
     w = nmod_find_root(2*L, mod);
     nmod_geometric_progression_init(F, w, L, mod);
-
-    time += (double)(clock()-ttime) / CLOCKS_PER_SEC;
-    flint_printf("\n geometric progression: %.3f sec.\n", time);
 
 
     int i,j;
@@ -397,6 +390,71 @@ void nmod_apply_T(nmod_poly_mat_t  RT, const nmod_poly_mat_t AT, const nmod_poly
  *    To see: first colmun zero is a particular case ?
  * 
  */
+
+
+void nmod_phi1(nmod_poly_t  phi1, const nmod_poly_mat_t CT, \
+                     const nmod_poly_mat_t PT, const nmod_poly_t Delta)
+{
+
+    ulong prime;
+    prime = nmod_poly_mat_modulus(PT);
+
+    slong r = (PT->r)-1;
+
+    slong d;
+    d = nmod_poly_mat_degree(PT);
+
+    /** Bound on the output degree 
+     *   using a constant random column projection
+     */
+
+    slong D = (2*r-1)*d -1; // M^* and Y  (2r-2)d + (d-1)  
+
+    flint_rand_t state;
+    flint_rand_init(state);
+    srand(time(NULL));
+    flint_rand_set_seed(state, rand(), rand());
+
+
+    nmod_poly_mat_t randT;
+    nmod_poly_mat_init(randT,r,1,prime);
+
+    // Better than randtest matrix to be sure to have nonzero entries / Check nonzero ? 
+    for (int i=0; i<r; i++)
+    {
+        //nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT1, i, 0), 0, n_randtest(state) % prime);
+        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT, i, 0), 0, n_randbits(state,FLINT_BITS-2));
+    }
+
+    nmod_poly_mat_t  colT;
+    nmod_poly_mat_init(colT,r,1,prime);
+
+
+    nmod_apply_T(colT, randT, CT, PT, D); 
+   
+    nmod_poly_t g;
+    nmod_poly_init(g,prime); // re-used below 
+
+    nmod_poly_gcd_hgcd(g, nmod_poly_mat_entry(colT, 0, 0), Delta);
+
+    for (int i=1; i<r; i++)
+    {
+        nmod_poly_gcd_hgcd(g, g, nmod_poly_mat_entry(colT, i, 0));
+    }
+
+    nmod_poly_div(phi1,Delta,g);
+
+
+    flint_rand_clear(state);
+
+    nmod_poly_clear(g);
+   
+
+    nmod_poly_mat_clear(randT);
+    nmod_poly_mat_clear(colT);
+}
+
+
 
 void nmod_phi_T(nmod_poly_t  phi1, nmod_poly_t  phi2, const nmod_poly_mat_t CT, \
                      const nmod_poly_mat_t PT, const nmod_poly_t Delta)
@@ -892,8 +950,8 @@ void nmod_pseudo_Krylov(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t 
             nmod_poly_sub(nmod_poly_mat_entry(K, i, k+1),nmod_poly_mat_entry(K, i, k+1),p2);
         }
 
-        time += (double)(clock()-ttime) / CLOCKS_PER_SEC;
-        flint_printf("\n K: %ld-th column: %.3f sec.\n", k+1, time);
+        time = (double)(clock()-ttime) / CLOCKS_PER_SEC;
+        flint_printf("\n K: %ld-th column: %.3f sec.\n", k+2, time);
 
     } // main loop on the columns of K 
 
@@ -1096,7 +1154,7 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
 
     nmod_biv_resultant_geometric(Delta, iPyT, PT);
 
-    time += (double)(clock()-ttime) / CLOCKS_PER_SEC;
+    time = (double)(clock()-ttime) / CLOCKS_PER_SEC;
 
     flint_printf("\n time resultant: %.3f sec.\n", time);
 
@@ -1133,22 +1191,38 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
 
     nmod_biv_mulmod_geometric(CT, PxT, iPyT, PT, D); 
 
+    time = (double)(clock()-ttime) / CLOCKS_PER_SEC;
+
+    flint_printf("\n time precomputation: %.3f sec.\n", time);
 
     /**  Randomized Computation of phi_1 and phi_2 (non monic)
      *   -----------------------------------------------------
      */
 
-    nmod_poly_t phi1,phi2;
+    nmod_poly_t phi1;
+    //nmod_poly_t phi2;
     nmod_poly_init(phi1,prime);
-    nmod_poly_init(phi2,prime);
+    //nmod_poly_init(phi2,prime);
 
 
-    nmod_phi_T(phi1, phi2, CT, PT, Delta);
+    // ttime=clock();
 
-    time += (double)(clock()-ttime) / CLOCKS_PER_SEC;
+    // nmod_phi_T(phi1, phi2, CT, PT, Delta);
 
-    flint_printf("\n time precomputation: %.3f sec.\n", time);
+    // time = (double)(clock()-ttime) / CLOCKS_PER_SEC;
 
+    // flint_printf("\n time phi: %.3f sec.\n", time);
+
+    // flint_printf("\n deg Delta: %ld\n",nmod_poly_degree(Delta));
+    // flint_printf("\n deg phi1: %ld\n",nmod_poly_degree(phi1));
+
+    ttime=clock();
+
+    nmod_phi1(phi1, CT, PT, Delta);
+
+    time = (double)(clock()-ttime) / CLOCKS_PER_SEC;
+
+    flint_printf("\n time phi1: %.3f sec.\n", time);
 
     flint_printf("\n deg Delta: %ld\n",nmod_poly_degree(Delta));
     flint_printf("\n deg phi1: %ld\n",nmod_poly_degree(phi1));
@@ -1245,7 +1319,7 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
         
     nmod_poly_clear(Delta);
     nmod_poly_clear(phi1);
-    nmod_poly_clear(phi2);
+    //nmod_poly_clear(phi2);
     nmod_poly_clear(tpol);
 
     return nz; 
@@ -1351,8 +1425,15 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
 
     slong d=nmod_poly_mat_degree(PT);
 
+    double time=0.0;
+    clock_t ttime;
+
+    ttime=clock();
+
     nmod_biv_resultant_geometric(Delta, iPyT, PT);
 
+    time = (double)(clock()-ttime) / CLOCKS_PER_SEC;
+    flint_printf("\n   time resultant: %.3f sec.\n", time);
 
     /**  Target degree of the description 
      *     left description 
@@ -1406,6 +1487,7 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
     nmod_poly_set_coeff_ui(iDeltak, 0, 1);
 
 
+
     /** 
      *  Starting for the pseudo-Krylov matrix 
      *  -------------------------------------
@@ -1422,6 +1504,7 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
         nmod_poly_scalar_mul_nmod(nmod_poly_mat_entry(PxT, i, 0),nmod_poly_mat_entry(PxT, i, 0),prime-1);
     }
 
+    ttime=clock();
 
     /** Precomputation of C = -Px (Py)^(-1)
      *  -----------------------------------
@@ -1435,6 +1518,10 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
     nmod_poly_mat_init(CT,r,1,prime);
 
     nmod_biv_mulmod_geometric(CT, PxT, iPyT, PT, D); 
+
+    time = (double)(clock()-ttime) / CLOCKS_PER_SEC;
+    flint_printf("\n   time precomputation: %.3f sec.\n", time);
+
 
     // Starting from the second column, hence C index k+1 
 
@@ -2792,8 +2879,15 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
     tt=clock();
 
 
+    double time=0.0;
+    clock_t ttime;
+
+    ttime=clock();
+
     nmod_biv_resultant_geometric(Delta, iPyT, PT);
 
+    time = (double)(clock()-ttime) / CLOCKS_PER_SEC;
+    flint_printf("\n   time resultant: %.3f sec.\n", time);
 
     /** 
      *  Starting for the pseudo-Krylov matrix 
@@ -2811,6 +2905,8 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
         nmod_poly_scalar_mul_nmod(nmod_poly_mat_entry(PxT, i, 0),nmod_poly_mat_entry(PxT, i, 0),prime-1);
     }
 
+
+    ttime=clock();
 
     /** Precomputation of C = -Px (Py)^(-1)
      *  -----------------------------------
@@ -2830,12 +2926,17 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
      *   -----------------------------------------------------
      */
 
-    nmod_poly_t phi1,phi2;
+    nmod_poly_t phi1;
+    //nmod_poly_t phi2;
     nmod_poly_init(phi1,prime);
-    nmod_poly_init(phi2,prime);
+    //nmod_poly_init(phi2,prime);
 
 
-    nmod_phi_T(phi1, phi2, CT, PT, Delta);
+    //nmod_phi_T(phi1, phi2, CT, PT, Delta);
+    nmod_phi1(phi1, CT, PT, Delta);
+
+    time = (double)(clock()-ttime) / CLOCKS_PER_SEC;
+    flint_printf("\n   time precomputation: %.3f sec.\n", time);
 
     flint_printf("\n  deg phi1: %ld\n",nmod_poly_degree(phi1));
 
@@ -2871,6 +2972,8 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
 
     for (j=1; j<r; j++)
     {
+        //ttime=clock();
+
         for (i=0; i<r; i++)
         {
             nmod_poly_zero(nmod_poly_mat_entry(Yk, i, 0));
@@ -2883,6 +2986,9 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
         {
             nmod_poly_div(nmod_poly_mat_entry(T, i, j), nmod_poly_mat_entry(temp, i, 0), g);
         }
+
+        //time = (double)(clock()-ttime) / CLOCKS_PER_SEC;
+        //flint_printf("\n   %ld-th column of T: %.3f sec.\n", j+1, time);
     }
 
    
@@ -2981,36 +3087,39 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
             shift[i]=0;
         }
 
-
         
+        //flint_printf("\n    !!! target_degree: %ld\n", target_degree);
+
         nmod_poly_mat_pmbasis(ker, shift, B, sigma); 
+
         t += (double)(clock()-tt) / CLOCKS_PER_SEC;
         flint_printf("\n    description of T, via truncated approximant: %.3f sec.\n", t);
+
+
+        //flint_printf("\n !!! shift %{slong*}\n", shift, 2*r);
 
 
         slong nbrows=0;
 
         for (i = 0; i < 2*r; i++) 
-        {
+        { 
             if (shift[i] <= target_degree) 
             {
+                if (nbrows >= r)
+                {
+                    flint_printf("\nA complete description of degree at most %{slong} may not exist\n", target_degree);
+                    return 0; 
+                }
+
                 for (j=0; j<r; j++)
                 {
                     nmod_poly_set(nmod_poly_mat_entry(Q, nbrows, j), nmod_poly_mat_entry(ker, i, j));
                     nmod_poly_set(nmod_poly_mat_entry(P, nbrows, j), nmod_poly_mat_entry(ker, i, j+r));
                 }
+
                 nbrows +=1;     
-
-                if (nbrows >r)
-                    flint_printf("\nA complete description of degree at most %{slong} may not exist\n", target_degree);
-
             }  
         }
-
-
-
-        
-
     }
     
 
