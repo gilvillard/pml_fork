@@ -102,6 +102,8 @@ void Description_From_Rank_1(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong
 void nmod_pseudo_Krylov(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t CT, \
                         const nmod_poly_mat_t PT, const nmod_poly_t  phi1, const nmod_poly_t  Delta);
 
+void nmod_pseudo_Krylov_phi1(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t CT, \
+                        const nmod_poly_mat_t PT, const nmod_poly_t  phi1, const nmod_poly_t  Delta);
 
 
 /**  Computation of the appropriate matrix for kernel solution 
@@ -125,6 +127,8 @@ void nmod_pseudo_Krylov_for_kernel(nmod_poly_mat_t LT, const ulong n, const nmod
 
 slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
 
+slong nmod_algeq_to_diffeq_phi1(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
+
 
 /**  algeqtodiffeq series and descirption 
  * 
@@ -133,6 +137,8 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
  */ 
 
 slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
+
+slong nmod_algeq_to_diffeq_series_phi1(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
 
 
 slong nmod_algeq_to_diffeq_new(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
