@@ -1456,6 +1456,11 @@ slong nmod_algeq_to_diffeq_phi1(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
 {
     int i,j;
 
+    flint_rand_t state;
+    flint_rand_init(state);
+    srand(time(NULL));
+    flint_rand_set_seed(state, rand(), rand());
+
     /**
      *  Resultant and inverse of Py
      *  ---------------------------
@@ -1589,6 +1594,9 @@ slong nmod_algeq_to_diffeq_phi1(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
     nmod_poly_mat_t  K;
     nmod_poly_mat_init(K,r,n,prime);
 
+    nmod_poly_mat_t  TK;
+    nmod_poly_mat_init(TK,r,n,prime);
+
     
     nmod_pseudo_Krylov_phi1(K, n, CT, PT, phi1, Delta);
     
@@ -1628,15 +1636,50 @@ slong nmod_algeq_to_diffeq_phi1(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
     nmod_poly_mat_column_degree(pivind, K, shift);
 
 
+
     //flint_printf("\n %{slong*}\n", pivind, n);
 
 
     flint_printf("\n Degree: %ld    %ld x %ld\n", nmod_poly_mat_degree(K), K->r, K->c);
 
+
+    // Randomization submatrix 
+
+
+    // nmod_poly_mat_t randU;
+    // nmod_poly_mat_init(randU,r,r,prime);
+        
+    // ttime = clock();
+    // // Better than randtest matrix to be sure to have nonzero entries / Check nonzero ? 
+    // for (i=0; i<r; i++)
+    //     for (j=0; j<r; j++)
+    //     {
+    //         //nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT1, i, 0), 0, n_randtest(state) % prime);
+    //         nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randU, i, j), \
+    //                                 0, n_randbits(state,FLINT_BITS-2));
+    //     }
+
+    // nmod_poly_mat_multiply(K, randU, K);
+
+    // nmod_poly_mat_init(TK,n,n,prime);
+
+    // for (i=0; i<n; i++)
+    // {
+    //     for (j=0; j<n; j++)
+    //     {
+    //     nmod_poly_set(nmod_poly_mat_entry(TK, i, j), nmod_poly_mat_entry(K, i, j)); 
+    //     }
+    // }
+
+    // time = (double)(clock()-ttime) / CLOCKS_PER_SEC;
+    // flint_printf("\n   time randomization: %.3f sec.\n", time);
+
+
+
     double t=0.0;
     clock_t tt;
     tt=clock();
-    nz=nmod_poly_mat_kernel(LT, pivind, shift, K, ORD_WEAK_POPOV, COL_UPPER);
+    nz=nmod_poly_mat_kernel(LT, pivind, NULL, K, ORD_WEAK_POPOV, COL_UPPER);
     t += (double)(clock()-tt) / CLOCKS_PER_SEC;
     flint_printf("\n Kernel naive: %.3f sec.    Tot.: %.3f sec.\n", t, tc+t);
 
@@ -2082,6 +2125,12 @@ slong nmod_algeq_to_diffeq_series_phi1(nmod_poly_mat_t LT, const nmod_poly_mat_t
 {
     int i,j;
 
+    flint_rand_t state;
+    flint_rand_init(state);
+    srand(time(NULL));
+    flint_rand_set_seed(state, rand(), rand());
+
+
 
     ulong prime;
     prime = nmod_poly_mat_modulus(PT);
@@ -2258,16 +2307,17 @@ slong nmod_algeq_to_diffeq_series_phi1(nmod_poly_mat_t LT, const nmod_poly_mat_t
     // }
    
 
-    // Target truncation order for the description 
+   
 
     slong sigma;
+
     if (n <=r) 
         sigma = ceil(((double) (r+n)*target_degree)/((double) n) +1);
     else 
         sigma = ceil(((double) (r+n)*target_degree)/((double) r) +1);
 
-
-    sigma = ceil(((double) (2*n)*target_degree)/((double) n) +1);
+    // Target truncation order for the description of the 6 x 6 
+    sigma = ceil(((double) 2*target_degree) +1);
 
     slong N;
     N = sigma + (n-1); // Including the order for the derivation 
@@ -2388,6 +2438,24 @@ slong nmod_algeq_to_diffeq_series_phi1(nmod_poly_mat_t LT, const nmod_poly_mat_t
         nmod_poly_mat_init(TK,n,n,prime);
 
 
+        // Randomization submatrix 
+
+
+        nmod_poly_mat_t randU;
+        nmod_poly_mat_init(randU,r,r,prime);
+        
+        ttime = clock();
+        // Better than randtest matrix to be sure to have nonzero entries / Check nonzero ? 
+        for (i=0; i<r; i++)
+            for (j=0; j<r; j++)
+            {
+                //nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT1, i, 0), 0, n_randtest(state) % prime);
+                nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randU, i, j), \
+                                        0, n_randbits(state,FLINT_BITS-2));
+            }
+
+        nmod_poly_mat_multiply(K, randU, K);
+
         for (i=0; i<n; i++)
         {
             for (j=0; j<n; j++)
@@ -2395,6 +2463,11 @@ slong nmod_algeq_to_diffeq_series_phi1(nmod_poly_mat_t LT, const nmod_poly_mat_t
             nmod_poly_set(nmod_poly_mat_entry(TK, i, j), nmod_poly_mat_entry(K, i, j)); 
             }
         }
+
+        time = (double)(clock()-ttime) / CLOCKS_PER_SEC;
+        flint_printf("\n   time randomization: %.3f sec.\n", time);
+
+
 
         double ta=0.0;
         clock_t tta;
@@ -4303,7 +4376,7 @@ slong nmod_algeq_to_diffeq_last_phi1(nmod_poly_mat_t LT, const nmod_poly_mat_t P
 
     t=0.0;
     tt=clock();
-    nz=nmod_poly_mat_kernel(LT, pivind_col, shift_col, K, ORD_WEAK_POPOV, COL_UPPER);
+    nz=nmod_poly_mat_kernel(LT, pivind_col, NULL, K, ORD_WEAK_POPOV, COL_UPPER);
     t += (double)(clock()-tt) / CLOCKS_PER_SEC;
     flint_printf("\n .. Final ZLS kernel: %.3f sec.\n", t);
 
