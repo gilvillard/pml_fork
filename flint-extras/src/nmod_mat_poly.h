@@ -684,6 +684,106 @@ void nmod_mat_poly_mbasis(nmod_mat_poly_t appbas,
 
 //@} // doxygen group: M-Basis algorithm (uniform approximant order)
 
+
+/** @name M-IntBasis algorithm (uniform number of interpolation points)
+ * \anchor mintbasis
+ *
+ * The functions here compute a `shift`-minimal ordered weak Popov
+ * interpolant basis for `(E,pts)`: for `E = (E_1,...,E_d)` in `K^{m x n}`
+ * and pairwise distinct points `pts = (pts_1,...,pts_d)` in `K`, this is a
+ * basis of `{p in K[x]^{1 x m} : p(pts_k)*E_k = 0 for 1<=k<=d}`. This is
+ * the point-evaluation analogue of `mbasis` (see @ref mbasis): the same
+ * iterative construction, with "coefficient of `P*F`" (order truncation)
+ * replaced by "evaluation `P(pts_k)*E_k`" (interpolation).
+ *
+ * At the end of the computation, the vector `shift` contains the shifted
+ * row degree of `intbas`, for the input shift.
+ *
+ * This is the algorithm M-IntBasis insipired from: 
+ *   - B. Beckermann and G. Labahn. 2000. Fraction-free computation of matrix 
+ *     rational interpolant and matrix gcds. 
+ *     SIAM J. Matrix Anal. Appl. 22, 1 (2000), 114–144.
+ *   - C.-P. Jeannerod, V. Neiger, É. Schost, and G. Villard. 2017. 
+ *     Computing minimal interpolation bases. 
+ *     J. Symbolic Comput. 83 (2017), 272–314.
+ * and that can be found in 
+ *  - S. Hyun, V. Neiger, E. Schost. Proceedings ISSAC 2019. 
+ *
+ * There are two variants `rescomp`/`resupdate` 
+ * see  * @ref nmod_mat_poly_mintbasis for the resulting (measured)
+ * dispatch condition.
+ */
+//@{
+
+/** Variant of `mintbasis` (see @ref mintbasis) where the residual matrix
+ * `intbas(pts[k])*E_k` is recomputed from scratch, via a full Horner
+ * evaluation of `intbas` at `pts[k]`, at every iteration.
+ *
+ * Complexity: `E` is `m x n`, `d` points.
+ *   - `d` calls to constant nullspace with dimension `m x n`, each one
+ *     gives a constant matrix `K` which is generically `(m-n) x m` (may
+ *     have more rows in exceptional cases);
+ *   - `d` products `(X-pts[k]) Id + K) * intbas` to update the
+ *     interpolant basis (note the `(X-pts[k])` recentering, not plain
+ *     `X` as in `mbasis`'s degree-bump -- interpolant validity at a new
+ *     point has no order-truncation-style absorbing property, so the
+ *     degree-1 correction cannot be chosen freely the way `mbasis`'s can);
+ *   - `d` evaluations of `intbas` at `pts[k]` (Horner) plus `d` products
+ *     `evalP*E_k` to find residuals.
+ * See @ref nmod_mat_poly_mintbasis_resupdate for a variant that skips the
+ * `evalP*E_k` product every iteration, at the cost of a different
+ * residual-maintenance overhead. */
+void nmod_mat_poly_mintbasis_rescomp(nmod_mat_poly_t intbas,
+                                     slong * shift,
+                                     const nmod_mat_poly_t E,
+                                     const ulong * pts);
+
+/** Variant of `mintbasis` (see @ref mintbasis) where we store the vector
+ * of future residual values `Res[j] = intbas(pts[j])*E_j`, `j =
+ * k..d-1`, and update it via the SAME elementary row operations applied
+ * to `intbas` at each iteration, instead of recomputing the current
+ * residual via Horner evaluation as
+ * @ref nmod_mat_poly_mintbasis_rescomp does.
+ *
+ * Unlike `mbasis`'s own `resupdate` (see @ref mbasis), whose win comes
+ * from an asymptotically cheaper residual-maintenance cost as `n`
+ * approaches `m`, this variant's `(X-pts[k])` recentering step is a
+ * genuine scalar multiply on every entry of every live residual, every
+ * iteration -- an `O(d^2 m n)`-ish cost with no counterpart in `mbasis`'s
+ * `resupdate` (whose analogous "X-shift" step is a pure pointer
+ * relabeling). So this variant is not generically cheaper the way
+ * `mbasis`'s `resupdate` is; what it does win on is skipping the one real
+ * matrix product (`evalP*E_k`) that `rescomp` pays every iteration. That
+ * saving dominates, and this variant is measured faster, when `d` (the
+ * number of points) is small relative to `m`, and/or `m-n` is small
+ * (i.e. `n` close to `m`) -- see @ref nmod_mat_poly_mintbasis for the
+ * measured dispatch condition and the PR description for the full
+ * measured table. Output is bit-for-bit identical to
+ * @ref nmod_mat_poly_mintbasis_rescomp on identical input: both variants
+ * apply the same row operations and the same nullspace pivot choice, only
+ * the residual bookkeeping differs. */
+void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
+                                       slong * shift,
+                                       const nmod_mat_poly_t E,
+                                       const ulong * pts);
+
+/** Main `mintbasis` function: chooses between
+ * @ref nmod_mat_poly_mintbasis_rescomp and
+ * @ref nmod_mat_poly_mintbasis_resupdate depending on the shape of `E`
+ * and its number of points `d` (`E->length`).
+ *
+ * The condition here, `d*(m-n+1) <= m`, was found by direct measurement
+ * over a grid of `(m,n,d)`.
+ * 
+ * \todo investigate for a better dispatcher.
+ */
+void nmod_mat_poly_mintbasis(nmod_mat_poly_t intbas,
+                             slong * shift,
+                             const nmod_mat_poly_t E,
+                             const ulong * pts);
+
+//@} // doxygen group: M-IntBasis algorithm (uniform number of interpolation points)
+
 #ifdef __cplusplus
 }
 #endif
