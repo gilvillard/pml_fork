@@ -10,17 +10,13 @@
     <https://www.gnu.org/licenses/>.
 */
 
-/* Targets nmod_mat_poly_mintbasis_rescomp / _resupdate / the
+/** Targets nmod_mat_poly_mintbasis_rescomp / _resupdate / the
  * nmod_mat_poly_mintbasis dispatcher directly. Uses nmod_poly_mat_is_
  * interpolant_basis (verification.c, this same staging area) for the
  * defining-property check -- the M-level output (nmod_mat_poly_t) is
  * converted to nmod_poly_mat_t via nmod_poly_mat_set_from_mat_poly
  * (nmod_poly_mat_utils.h), the same conversion nmod_poly_mat_mintbasis
- * itself uses to wrap this dispatcher (interpolant_basis.c) -- see
- * t-pmintbasis.c's own header comment for why this is a real
- * strengthening over the ad hoc membership + Monte Carlo nonsingularity +
- * degree-sum checks this file used before that verifier existed, not
- * just a refactor.
+ * itself uses to wrap this dispatcher (interpolant_basis.c). 
  *
  * Checks, per random trial:
  *   (1) rescomp and resupdate agree bit-for-bit (they must: same row
@@ -28,16 +24,22 @@
  *       differs);
  *   (2) the dispatcher's output equals whichever of the two variants its
  *       own condition (d*(m-n+1) <= m) selects;
+ *      CHECK nmod_mat_poly_mintbasis.c agrees with this formula 
  *   (3) the dispatcher's output is a genuine minimal interpolant basis
- *       (membership + generation, via the verifier), w.r.t. the ORIGINAL
+ *       (membership + generation, via the verifier), w.r.t. the original 
  *       (pre-call) shift -- shift is mutated in place by the construction
- *       calls, see t-verification.c's own header comment for the real bug
- *       this caught there.
- *
+ *       calls. 
+ * 
  * Also includes an explicit, non-random d=0 regression case, mirroring
  * mbasis's own order=0 edge case (see t-mbasis_variants.c): with no
  * points, all three functions must return the identity with shift
- * unchanged.
+ * unchanged. TO BE DISCUSSED.
+ *
+ * Also includes an explicit very-small-prime stress block (prime in
+ * {2,3,5,7,11}): the main randomized loop below never picks a prime under
+ * 2^20 (its `nbits` floor is 20), but correctness here does not rely on
+ * any genericity of the field -- the verifier's generation check
+ * (deg(det) == sum_k rank(E_k)). 
  */
 
 #include <flint/test_helpers.h>
@@ -45,6 +47,7 @@
 #include "nmod_mat_poly.h"
 #include "nmod_poly_mat_interpolant.h"
 #include "nmod_poly_mat_utils.h"
+
 
 static int check_d0(slong m, slong n, ulong prime, flint_rand_t state)
 {
@@ -108,6 +111,7 @@ static int core_test(nmod_mat_poly_t E, const ulong * pts, const slong * shift0)
             res = 0;
 
     /* (2) dispatcher matches whichever variant it should have picked */
+    /** Check that nmod_mat_poly_mintbasis.c agrees with the following formula */
     if (res)
     {
         int expect_resupdate = (d * (m - n + 1) <= m);
@@ -120,7 +124,7 @@ static int core_test(nmod_mat_poly_t E, const ulong * pts, const slong * shift0)
                 res = 0;
     }
 
-    /* (3) genuine minimal interpolant basis, w.r.t. the ORIGINAL shift0 --
+    /* (3) genuine minimal interpolant basis, w.r.t. the original shift0 --
        convert to nmod_poly_mat_t first, the same conversion nmod_poly_mat_
        mintbasis itself uses to wrap this dispatcher */
     if (res)
@@ -163,7 +167,7 @@ TEST_FUNCTION_START(nmod_mat_poly_mintbasis, state)
             TEST_FUNCTION_FAIL("d=0 case: m = %wd, n = %wd, prime = %wu\n", m, n, prime);
     }
 
-    for (i = 0; i < 100 * flint_test_multiplier(); i++)
+    for (i = 0; i < 200 * flint_test_multiplier(); i++)
     {
         ulong nbits = 20 + n_randint(state, 40);
         slong n = 1 + n_randint(state, 15);
@@ -205,6 +209,54 @@ TEST_FUNCTION_START(nmod_mat_poly_mintbasis, state)
         nmod_mat_poly_clear(E);
         flint_free(pts);
         flint_free(shift0);
+    }
+
+    /* explicit very-small-prime stress coverage, see header comment above */
+    {
+        ulong small_primes[] = {2, 3, 5, 7, 11};
+        for (slong sp = 0; sp < (slong)(sizeof(small_primes) / sizeof(small_primes[0])); sp++)
+        {
+            ulong prime = small_primes[sp];
+
+            for (i = 0; i < 10 * flint_test_multiplier(); i++)
+            {
+                slong n = 1 + n_randint(state, 16);
+                slong m = n + n_randint(state, 16); /* n <= m, including n == m */
+                slong d = n_randint(state, prime + 1); /* 0 <= d <= prime */
+
+                nmod_mat_poly_t E;
+                nmod_mat_poly_init(E, m, n, prime);
+                nmod_mat_poly_rand(E, state, d);
+
+                ulong * pts = flint_malloc(FLINT_MAX(d, 1) * sizeof(ulong));
+                for (slong k = 0; k < d; k++)
+                {
+                    int distinct;
+                    do
+                    {
+                        pts[k] = n_randint(state, prime);
+                        distinct = 1;
+                        for (slong j = 0; j < k; j++)
+                            if (pts[j] == pts[k])
+                                distinct = 0;
+                    } while (!distinct);
+                }
+
+                slong * shift0 = flint_malloc(m * sizeof(slong));
+                for (slong j = 0; j < m; j++)
+                    shift0[j] = (n_randint(state, 4) == 0) ? n_randint(state, 20) : 0;
+
+                result = core_test(E, pts, shift0);
+
+                if (!result)
+                    TEST_FUNCTION_FAIL("small-prime case: prime = %wu, m = %wd, n = %wd, d = %wd\n",
+                                       prime, m, n, d);
+
+                nmod_mat_poly_clear(E);
+                flint_free(pts);
+                flint_free(shift0);
+            }
+        }
     }
 
     TEST_FUNCTION_END(state);
