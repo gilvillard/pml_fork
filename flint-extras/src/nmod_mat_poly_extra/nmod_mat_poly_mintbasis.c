@@ -109,7 +109,7 @@ void nmod_mat_poly_mintbasis_rescomp(nmod_mat_poly_t intbas,
     nmod_mat_t nsbas;
     /* trivial valid init before the loop, so the unconditional
        nmod_mat_clear at the end is always well-defined,
-       d == 0 case, and  nullity==m branch. */
+       d == 0 case, and  nullity==m branch. TO SEE.*/
     nmod_mat_init(nsbas, 0, 0, E->mod.n);
 
     for (slong k = 0; k < d; k++)

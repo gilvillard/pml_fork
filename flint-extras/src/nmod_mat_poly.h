@@ -713,7 +713,7 @@ void nmod_mat_poly_mbasis(nmod_mat_poly_t appbas,
  * At the end of the computation, the vector `shift` contains the shifted
  * row degree of `intbas`, for the input shift.
  *
- * This is the algorithm M-IntBasis insipired from: 
+ * This is the algorithm M-IntBasis inspired from: 
  *   - B. Beckermann and G. Labahn. 2000. Fraction-free computation of matrix 
  *     rational interpolant and matrix gcds. 
  *     SIAM J. Matrix Anal. Appl. 22, 1 (2000), 114–144.
