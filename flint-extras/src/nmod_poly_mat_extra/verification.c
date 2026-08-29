@@ -1,5 +1,5 @@
 /*
-    Copyright (C) 2026 Vincent Neiger
+    Copyright (C) 2026 Vincent Neiger, Gilles Villard
 
     This file is part of PML.
 
@@ -16,6 +16,7 @@
 #include "nmod_poly_mat_forms.h"
 #include "nmod_poly_mat_extra.h"  /* for prototypes */
 #include "nmod_poly_mat_multiply.h"
+#include "nmod_poly_mat_interpolant.h"
 
 /* TODO currently specialized to ROW_LOWER (or at least ROW_stuff) */
 int nmod_poly_mat_is_approximant_basis(const nmod_poly_mat_t appbas,
@@ -114,6 +115,142 @@ int nmod_poly_mat_is_approximant_basis(const nmod_poly_mat_t appbas,
 
     return success;
 }
+
+/**  Mirrors is_approximant basis structure closely (same three checks: shape,
+ * shift-reduced form, membership, generation), swapping the two pieces
+ * that are genuinely order-truncation-specific for their points-based
+ * counterparts. 
+ *
+ * - Membership: nmod_poly_mat_is_approximant_basis truncates the product
+ *   appbas*pmat mod x^order and checks it is zero. Here, intbas is
+ *   evaluated at each of the d points and multiplied by the corresponding
+ *   evaluation E_k (E's own degree-k coefficient, per this header's
+ *   "Conventions" -- not a truncation, a genuine pointwise product), and
+ *   each of the d products must be zero.
+ *
+ * - Generation (does intbas generate the whole interpolant module, not
+ *   just a valid sub-basis?): nmod_poly_mat_is_approximant_basis runs two
+ *   checks here:
+ *     (1) deg(det(appbas)) == sum of diagonal degrees of appbas. 
+           Ported here verbatim below, purely as the same kind of
+ *         implementation-bug safety net (an independent nmod_poly_mat_det
+ *         call cross-checked against the diagonal-degree sum). 
+ *     (2) a Monte Carlo full-rank test on [P(0) | C] (C being the
+ *         order-truncated residual coefficient at degree order) -- this is
+ *         the test that actually certifies generation. 
+ *   For interpolants, check (2)'s role is instead filled directly, with no
+ *   Monte Carlo needed and no genericity caveat: since the points are
+ *   pairwise distinct, K[x]/(prod_k(x-pts_k)) splits via CRT into
+ *   direct_sum_k K[x]/(x-pts_k) = direct_sum_k K (one field per point).
+ *   The interpolant module I contains M(x)*K[x]^{1xm} unconditionally
+ *   (M(x) = prod_k(x-pts_k) vanishes at every point, so M(x)*e_i is always
+ *   an interpolant), and under the CRT splitting, I / (M(x)*K[x]^{1xm})
+ *   corresponds exactly to direct_sum_k ker_left(E_k), of K-dimension
+ *   sum_k (m - rank(E_k)). Combined with the standard facts
+ *   dim_K(K[x]^{1xm}/I) = deg(det(any basis of I)) and
+ *   dim_K(K[x]^{1xm}/(M(x)*K[x]^{1xm})) = m*d, a short exact sequence gives,
+ *   deg(det(any basis of I)) = sum_k rank(E_k).
+ *
+ *   So "deg(det(intbas)) == sum_k rank(E_k)" is an exact formula for
+ *   the same quantity check (2).
+ */
+
+
+/* TODO currently specialized to ROW_LOWER (or at least ROW_stuff), same
+ * limitation as nmod_poly_mat_is_approximant_basis in this same file. */
+int nmod_poly_mat_is_interpolant_basis(const nmod_poly_mat_t intbas,
+                                       const nmod_poly_mat_t E,
+                                       const ulong * pts,
+                                       slong d,
+                                       const slong * shift,
+                                       orientation_t orient)
+{
+    const slong rdim = E->r;
+    const slong cdim = E->c;
+    const ulong prime = E->modulus;
+
+    int success = 1;
+
+    /* check intbas is square with the right dimension */
+    if (intbas->r != rdim || intbas->c != rdim)
+    {
+        printf("basis has wrong row dimension or column dimension\n");
+        success = 0;
+    }
+
+    /* check intbas is shifted reduced */
+    if (!nmod_poly_mat_is_ordered_weak_popov(intbas, shift, orient))
+    {
+        printf("basis is not shifted-weak Popov\n");
+        success = 0;
+    }
+
+    /* check rows of intbas are interpolants: intbas(pts[k]) * E_k == 0
+     * for every one of the d points */
+    nmod_mat_t Ik, Ek, prod;
+    nmod_mat_init(Ik, rdim, rdim, prime);
+    nmod_mat_init(Ek, rdim, cdim, prime);
+    nmod_mat_init(prod, rdim, cdim, prime);
+
+    for (slong k = 0; k < d; k++)
+    {
+        nmod_poly_mat_evaluate_nmod(Ik, intbas, pts[k]);
+        for (slong i = 0; i < rdim; i++)
+            for (slong j = 0; j < cdim; j++)
+                nmod_mat_entry(Ek, i, j) = nmod_poly_get_coeff_ui(nmod_poly_mat_entry(E, i, j), k);
+        nmod_mat_mul(prod, Ik, Ek);
+        if (!nmod_mat_is_zero(prod))
+        {
+            printf("intbas(pts[%ld]) * E_%ld is not zero\n", (long) k, (long) k);
+            success = 0;
+        }
+    }
+
+    /** check generation, using nmod_poly_mat_det, must equal D,
+     * the sum of diagonal degrees of intbas. 
+     * A cheap cross-check between two different code paths,
+     * catching bugs in either nmod_poly_mat_is_ordered_weak_popov or this
+     * diagonal-degree summation, kept purely as defense-in-depth.
+     */
+    slong D = 0;
+    for (slong i = 0; i < rdim; i++)
+        D += nmod_poly_degree(nmod_poly_mat_entry(intbas, i, i));
+
+    nmod_poly_t det;
+    nmod_poly_init(det, prime);
+    nmod_poly_mat_det(det, intbas);
+    if (nmod_poly_degree(det) != D)
+    {
+        printf("determinant degree (%ld) != sum of diagonal degrees (%ld)\n", (long) nmod_poly_degree(det), (long) D);
+        success = 0;
+    }
+    nmod_poly_clear(det);
+
+    /** check generation, test 2 (the actual generation/minimality test:      
+     * D must equal sum_k rank(E_k). */
+    slong target_D = 0;
+    for (slong k = 0; k < d; k++)
+    {
+        for (slong i = 0; i < rdim; i++)
+            for (slong j = 0; j < cdim; j++)
+                nmod_mat_entry(Ek, i, j) = nmod_poly_get_coeff_ui(nmod_poly_mat_entry(E, i, j), k);
+        target_D += nmod_mat_rank(Ek);
+    }
+
+    if (D != target_D)
+    {
+        printf("sum of diagonal degrees (%ld) != sum of ranks of evaluation matrices (%ld)\n", (long) D, (long) target_D);
+        success = 0;
+    }
+
+    nmod_mat_clear(Ik);
+    nmod_mat_clear(Ek);
+    nmod_mat_clear(prod);
+
+    return success;
+}
+
+
 
 /* TODO currently does not check generation */
 int nmod_poly_mat_is_kernel(const nmod_poly_mat_t ker,
