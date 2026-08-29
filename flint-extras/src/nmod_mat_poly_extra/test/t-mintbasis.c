@@ -1,0 +1,211 @@
+/*
+    Copyright (C) 2026 Gilles Villard
+
+    This file is part of PML.
+
+    PML is free software: you can redistribute it and/or modify it under
+    the terms of the GNU General Public License version 2.0 (GPL-2.0-or-later)
+    as published by the Free Software Foundation; either version 2 of the
+    License, or (at your option) any later version. See
+    <https://www.gnu.org/licenses/>.
+*/
+
+/* Targets nmod_mat_poly_mintbasis_rescomp / _resupdate / the
+ * nmod_mat_poly_mintbasis dispatcher directly. Uses nmod_poly_mat_is_
+ * interpolant_basis (verification.c, this same staging area) for the
+ * defining-property check -- the M-level output (nmod_mat_poly_t) is
+ * converted to nmod_poly_mat_t via nmod_poly_mat_set_from_mat_poly
+ * (nmod_poly_mat_utils.h), the same conversion nmod_poly_mat_mintbasis
+ * itself uses to wrap this dispatcher (interpolant_basis.c) -- see
+ * t-pmintbasis.c's own header comment for why this is a real
+ * strengthening over the ad hoc membership + Monte Carlo nonsingularity +
+ * degree-sum checks this file used before that verifier existed, not
+ * just a refactor.
+ *
+ * Checks, per random trial:
+ *   (1) rescomp and resupdate agree bit-for-bit (they must: same row
+ *       operations, same nullspace pivot choice, only residual bookkeeping
+ *       differs);
+ *   (2) the dispatcher's output equals whichever of the two variants its
+ *       own condition (d*(m-n+1) <= m) selects;
+ *   (3) the dispatcher's output is a genuine minimal interpolant basis
+ *       (membership + generation, via the verifier), w.r.t. the ORIGINAL
+ *       (pre-call) shift -- shift is mutated in place by the construction
+ *       calls, see t-verification.c's own header comment for the real bug
+ *       this caught there.
+ *
+ * Also includes an explicit, non-random d=0 regression case, mirroring
+ * mbasis's own order=0 edge case (see t-mbasis_variants.c): with no
+ * points, all three functions must return the identity with shift
+ * unchanged.
+ */
+
+#include <flint/test_helpers.h>
+
+#include "nmod_mat_poly.h"
+#include "nmod_poly_mat_interpolant.h"
+#include "nmod_poly_mat_utils.h"
+
+static int check_d0(slong m, slong n, ulong prime, flint_rand_t state)
+{
+    nmod_mat_poly_t E, i_res, i_upd;
+    /* E is left at its freshly-initialized length 0 (NOT filled via
+       nmod_mat_poly_rand) -- unlike mbasis, whose order=0 case is
+       independent of matp's own length (order is a separate parameter),
+       mintbasis derives d directly from E->length, so genuinely testing
+       d=0 means E itself must have length 0, not just a d=0 argument. */
+    nmod_mat_poly_init(E, m, n, prime);
+    nmod_mat_poly_init(i_res, m, m, prime);
+    nmod_mat_poly_init(i_upd, m, m, prime);
+
+    slong * sh_res = flint_malloc(m * sizeof(slong));
+    slong * sh_upd = flint_malloc(m * sizeof(slong));
+    for (slong i = 0; i < m; i++)
+        sh_res[i] = sh_upd[i] = n_randint(state, 10);
+
+    nmod_mat_poly_mintbasis_rescomp(i_res, sh_res, E, NULL);
+    nmod_mat_poly_mintbasis_resupdate(i_upd, sh_upd, E, NULL);
+
+    int ok = nmod_mat_poly_is_one(i_res) && nmod_mat_poly_is_one(i_upd);
+
+    nmod_mat_poly_clear(E);
+    nmod_mat_poly_clear(i_res);
+    nmod_mat_poly_clear(i_upd);
+    flint_free(sh_res);
+    flint_free(sh_upd);
+    return ok;
+}
+
+/* returns 1 if the trial passed all checks, 0 otherwise */
+static int core_test(nmod_mat_poly_t E, const ulong * pts, const slong * shift0)
+{
+    const slong m = E->r;
+    const slong n = E->c;
+    const slong d = E->length;
+
+    slong * sh_res = flint_malloc(m * sizeof(slong));
+    slong * sh_upd = flint_malloc(m * sizeof(slong));
+    slong * sh_disp = flint_malloc(m * sizeof(slong));
+    for (slong i = 0; i < m; i++)
+        sh_res[i] = sh_upd[i] = sh_disp[i] = shift0[i];
+
+    nmod_mat_poly_t out_res, out_upd, out_disp;
+    nmod_mat_poly_init(out_res, m, m, E->mod.n);
+    nmod_mat_poly_init(out_upd, m, m, E->mod.n);
+    nmod_mat_poly_init(out_disp, m, m, E->mod.n);
+
+    nmod_mat_poly_mintbasis_rescomp(out_res, sh_res, E, pts);
+    nmod_mat_poly_mintbasis_resupdate(out_upd, sh_upd, E, pts);
+    nmod_mat_poly_mintbasis(out_disp, sh_disp, E, pts);
+
+    int res = 1;
+
+    /* (1) rescomp == resupdate, bit-for-bit */
+    if (!mat_poly_equal(out_res, out_upd))
+        res = 0;
+    for (slong i = 0; i < m; i++)
+        if (sh_res[i] != sh_upd[i])
+            res = 0;
+
+    /* (2) dispatcher matches whichever variant it should have picked */
+    if (res)
+    {
+        int expect_resupdate = (d * (m - n + 1) <= m);
+        nmod_mat_poly_struct * expected = expect_resupdate ? out_upd : out_res;
+        slong * sh_expected = expect_resupdate ? sh_upd : sh_res;
+        if (!mat_poly_equal(out_disp, expected))
+            res = 0;
+        for (slong i = 0; i < m; i++)
+            if (sh_disp[i] != sh_expected[i])
+                res = 0;
+    }
+
+    /* (3) genuine minimal interpolant basis, w.r.t. the ORIGINAL shift0 --
+       convert to nmod_poly_mat_t first, the same conversion nmod_poly_mat_
+       mintbasis itself uses to wrap this dispatcher */
+    if (res)
+    {
+        nmod_poly_mat_t E_pm, out_disp_pm;
+        nmod_poly_mat_init(E_pm, m, n, E->mod.n);
+        nmod_poly_mat_set_from_mat_poly(E_pm, E);
+        nmod_poly_mat_init(out_disp_pm, m, m, E->mod.n);
+        nmod_poly_mat_set_from_mat_poly(out_disp_pm, out_disp);
+
+        if (!nmod_poly_mat_is_interpolant_basis(out_disp_pm, E_pm, pts, d, shift0, ROW_LOWER))
+            res = 0;
+
+        nmod_poly_mat_clear(E_pm);
+        nmod_poly_mat_clear(out_disp_pm);
+    }
+
+    nmod_mat_poly_clear(out_res);
+    nmod_mat_poly_clear(out_upd);
+    nmod_mat_poly_clear(out_disp);
+    flint_free(sh_res);
+    flint_free(sh_upd);
+    flint_free(sh_disp);
+
+    return res;
+}
+
+TEST_FUNCTION_START(nmod_mat_poly_mintbasis, state)
+{
+    int i, result;
+
+    /* explicit d=0 regression case, both sides of the dispatcher's own
+       boundary, not left to chance */
+    for (i = 0; i < 20; i++)
+    {
+        slong m = 1 + n_randint(state, 15);
+        slong n = 1 + n_randint(state, m);
+        ulong prime = n_randprime(state, 2 + n_randint(state, 60), 1);
+        if (!check_d0(m, n, prime, state))
+            TEST_FUNCTION_FAIL("d=0 case: m = %wd, n = %wd, prime = %wu\n", m, n, prime);
+    }
+
+    for (i = 0; i < 100 * flint_test_multiplier(); i++)
+    {
+        ulong nbits = 20 + n_randint(state, 40);
+        slong n = 1 + n_randint(state, 15);
+        slong m = n + n_randint(state, 15); /* n <= m, including n == m */
+        slong d = n_randint(state, 20);
+
+        ulong bound = (ulong) (2 * FLINT_MAX(d, 1) + 2);
+        ulong prime;
+        do { prime = n_randprime(state, nbits, 1); } while (prime <= bound);
+
+        nmod_mat_poly_t E;
+        nmod_mat_poly_init(E, m, n, prime);
+        nmod_mat_poly_rand(E, state, d);
+
+        ulong * pts = flint_malloc(FLINT_MAX(d, 1) * sizeof(ulong));
+        for (slong k = 0; k < d; k++)
+        {
+            int distinct;
+            do
+            {
+                pts[k] = n_randint(state, prime);
+                distinct = 1;
+                for (slong j = 0; j < k; j++)
+                    if (pts[j] == pts[k])
+                        distinct = 0;
+            } while (!distinct);
+        }
+
+        slong * shift0 = flint_malloc(m * sizeof(slong));
+        for (slong j = 0; j < m; j++)
+            shift0[j] = (n_randint(state, 4) == 0) ? n_randint(state, 20) : 0;
+
+        result = core_test(E, pts, shift0);
+
+        if (!result)
+            TEST_FUNCTION_FAIL("prime = %wd, m = %wd, n = %wd, d = %wd\n",
+                               prime, m, n, d);
+
+        nmod_mat_poly_clear(E);
+        flint_free(pts);
+        flint_free(shift0);
+    }
+
+    TEST_FUNCTION_END(state);
+}

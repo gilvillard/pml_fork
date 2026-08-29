@@ -233,7 +233,6 @@ nmod_mat_poly_is_one(const nmod_mat_poly_t matp)
 
 //@} // doxygen group:  Zero and Identity
 
-
 /*------------------------------------------------------------*/
 /* Accessing struct info and coefficients                     */
 /*------------------------------------------------------------*/
@@ -346,6 +345,34 @@ nmod_mat_poly_set_entry(nmod_mat_poly_t matp,
 
 //@} // doxygen group:  Accessing struct info and matrix coefficients
 
+/*------------------------------------------------------------*/
+/* Equality test                                              */
+/*------------------------------------------------------------*/
+
+/** @name Equality test  
+ * Function to test whether two matrix polynomials are equal. 
+ * Compare coefficient  * by coefficient up to the longer of the two lengths 
+ * (missing coefficients  * on the shorter side are implicitly zero). */
+//@{
+
+NMOD_MAT_POLY_INLINE int mat_poly_equal(const nmod_mat_poly_t A, const nmod_mat_poly_t B)
+{
+    if (A->r != B->r || A->c != B->c)
+        return 0;
+    slong len = FLINT_MAX(A->length, B->length);
+    for (slong d = 0; d < len; d++)
+        for (slong i = 0; i < A->r; i++)
+            for (slong j = 0; j < A->c; j++)
+            {
+                ulong a = (d < A->length) ? nmod_mat_poly_get_entry(A, d, i, j) : 0;
+                ulong b = (d < B->length) ? nmod_mat_poly_get_entry(B, d, i, j) : 0;
+                if (a != b)
+                    return 0;
+            }
+    return 1;
+}
+
+//@} // doxygen group:  Equality test 
 
 /*------------------------------------------------------------*/
 /* Truncate, Shift, Reverse, Permute                          */

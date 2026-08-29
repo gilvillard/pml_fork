@@ -45,26 +45,6 @@
 #include "nmod_poly_mat_io.h"
 #include "nmod_poly_mat_utils.h"   /* nmod_poly_mat_set_from_mat_poly */
 
-/* nmod_mat_poly has no nmod_mat_poly_equal of its own; compare coefficient
- * by coefficient up to the longer of the two lengths (missing coefficients
- * on the shorter side are implicitly zero). */
-static int mat_poly_equal(const nmod_mat_poly_t A, const nmod_mat_poly_t B)
-{
-    if (A->r != B->r || A->c != B->c)
-        return 0;
-    slong len = FLINT_MAX(A->length, B->length);
-    for (slong d = 0; d < len; d++)
-        for (slong i = 0; i < A->r; i++)
-            for (slong j = 0; j < A->c; j++)
-            {
-                ulong a = (d < A->length) ? nmod_mat_poly_get_entry(A, d, i, j) : 0;
-                ulong b = (d < B->length) ? nmod_mat_poly_get_entry(B, d, i, j) : 0;
-                if (a != b)
-                    return 0;
-            }
-    return 1;
-}
-
 static int check_order0(slong rdim, slong cdim, ulong prime, flint_rand_t state)
 {
     nmod_mat_poly_t matp, app_res, app_upd;
