@@ -52,11 +52,11 @@
 static int check_d0(slong m, slong n, ulong prime, flint_rand_t state)
 {
     nmod_mat_poly_t E, i_res, i_upd;
-    /* E is left at its freshly-initialized length 0 (NOT filled via
-       nmod_mat_poly_rand) -- unlike mbasis, whose order=0 case is
-       independent of matp's own length (order is a separate parameter),
-       mintbasis derives d directly from E->length, so genuinely testing
-       d=0 means E itself must have length 0, not just a d=0 argument. */
+    /* d is a separate explicit parameter, so d=0 is tested
+       directly against a non-trivial, randomly-filled E of positive
+       length -- unlike before this parameter existed, when testing d=0
+       required E itself to have length 0. This also exercises d < E->
+       length in general, not just the d=0 boundary. */
     nmod_mat_poly_init(E, m, n, prime);
     nmod_mat_poly_init(i_res, m, m, prime);
     nmod_mat_poly_init(i_upd, m, m, prime);
@@ -66,8 +66,8 @@ static int check_d0(slong m, slong n, ulong prime, flint_rand_t state)
     for (slong i = 0; i < m; i++)
         sh_res[i] = sh_upd[i] = n_randint(state, 10);
 
-    nmod_mat_poly_mintbasis_rescomp(i_res, sh_res, E, NULL);
-    nmod_mat_poly_mintbasis_resupdate(i_upd, sh_upd, E, NULL);
+    nmod_mat_poly_mintbasis_rescomp(i_res, sh_res, E, NULL, 0);
+    nmod_mat_poly_mintbasis_resupdate(i_upd, sh_upd, E, NULL, 0);
 
     int ok = nmod_mat_poly_is_one(i_res) && nmod_mat_poly_is_one(i_upd);
 
@@ -80,11 +80,10 @@ static int check_d0(slong m, slong n, ulong prime, flint_rand_t state)
 }
 
 /* returns 1 if the trial passed all checks, 0 otherwise */
-static int core_test(nmod_mat_poly_t E, const ulong * pts, const slong * shift0)
+static int core_test(nmod_mat_poly_t E, const ulong * pts, slong d, const slong * shift0)
 {
     const slong m = E->r;
     const slong n = E->c;
-    const slong d = E->length;
 
     slong * sh_res = flint_malloc(m * sizeof(slong));
     slong * sh_upd = flint_malloc(m * sizeof(slong));
@@ -97,9 +96,9 @@ static int core_test(nmod_mat_poly_t E, const ulong * pts, const slong * shift0)
     nmod_mat_poly_init(out_upd, m, m, E->mod.n);
     nmod_mat_poly_init(out_disp, m, m, E->mod.n);
 
-    nmod_mat_poly_mintbasis_rescomp(out_res, sh_res, E, pts);
-    nmod_mat_poly_mintbasis_resupdate(out_upd, sh_upd, E, pts);
-    nmod_mat_poly_mintbasis(out_disp, sh_disp, E, pts);
+    nmod_mat_poly_mintbasis_rescomp(out_res, sh_res, E, pts, d);
+    nmod_mat_poly_mintbasis_resupdate(out_upd, sh_upd, E, pts, d);
+    nmod_mat_poly_mintbasis(out_disp, sh_disp, E, pts, d);
 
     int res = 1;
 
@@ -158,6 +157,7 @@ static int core_test(nmod_mat_poly_t E, const ulong * pts, const slong * shift0)
     return res;
 }
 
+
 TEST_FUNCTION_START(nmod_mat_poly_mintbasis, state)
 {
     int i, result;
@@ -175,12 +175,19 @@ TEST_FUNCTION_START(nmod_mat_poly_mintbasis, state)
 
     for (i = 0; i < 200 * flint_test_multiplier(); i++)
     {
-        ulong nbits = 20 + n_randint(state, 40);
-        slong n = 1 + n_randint(state, 15);
-        slong m = n + n_randint(state, 15); /* n <= m, including n == m */
-        slong d = n_randint(state, 20);
+        slong n = 1 + n_randint(state, 10);
+        slong m = 1 + n_randint(state, 10); /* n <= m, including n == m */
+        slong d = n_randint(state, 150);
 
+        /* nbits' floor must guarantee some prime of that bit length exceeds
+           bound, or the retry loop below never terminates (nbits is fixed
+           before the retry starts). Tying the floor to bound -- instead of
+           a fixed constant such as the 20 this replaces -- lets nbits range
+           down as low as 3-4 bits when d is small, closing the gap between
+           this loop's main range and the explicit {2,3,5,7,11} block below,
+           see t-pmintbasis.c's own version of this same fix. */
         ulong bound = (ulong) (2 * FLINT_MAX(d, 1) + 2);
+        ulong nbits = FLINT_BIT_COUNT(bound) + 1 + n_randint(state, 50);
         ulong prime;
         do { prime = n_randprime(state, nbits, 1); } while (prime <= bound);
 
@@ -206,7 +213,7 @@ TEST_FUNCTION_START(nmod_mat_poly_mintbasis, state)
         for (slong j = 0; j < m; j++)
             shift0[j] = (n_randint(state, 4) == 0) ? n_randint(state, 20) : 0;
 
-        result = core_test(E, pts, shift0);
+        result = core_test(E, pts, d, shift0);
 
         if (!result)
             TEST_FUNCTION_FAIL("prime = %wd, m = %wd, n = %wd, d = %wd\n",
@@ -252,7 +259,7 @@ TEST_FUNCTION_START(nmod_mat_poly_mintbasis, state)
                 for (slong j = 0; j < m; j++)
                     shift0[j] = (n_randint(state, 4) == 0) ? n_randint(state, 20) : 0;
 
-                result = core_test(E, pts, shift0);
+                result = core_test(E, pts, d, shift0);
 
                 if (!result)
                     TEST_FUNCTION_FAIL("small-prime case: prime = %wu, m = %wd, n = %wd, d = %wd\n",

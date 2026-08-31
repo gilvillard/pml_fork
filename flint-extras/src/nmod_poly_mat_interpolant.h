@@ -86,7 +86,9 @@
  * Sources.
  * --------
  * 
+ * 
  * The algorithms are inspired from: 
+ *   - PML/ntl-extras
  *   - B. Beckermann and G. Labahn. 2000. Fraction-free computation of matrix 
  *     rational interpolant and matrix gcds. 
  *     SIAM J. Matrix Anal. Appl. 22, 1 (2000), 114–144.

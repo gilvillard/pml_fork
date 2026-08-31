@@ -87,12 +87,12 @@ static void _mintbasis_low_rank_addmul(nmod_mat_t bottom, const nmod_mat_t nsbas
 void nmod_mat_poly_mintbasis_rescomp(nmod_mat_poly_t intbas,
                                      slong * shift,
                                      const nmod_mat_poly_t E,
-                                     const ulong * pts)
+                                     const ulong * pts,
+                                     slong d)
 {
     const slong m = E->r;
     const slong n = E->c;
-    const slong d = E->length;
-
+   
     nmod_mat_poly_one(intbas);
 
     if (d == 0)
@@ -115,7 +115,11 @@ void nmod_mat_poly_mintbasis_rescomp(nmod_mat_poly_t intbas,
     for (slong k = 0; k < d; k++)
     {
         nmod_mat_poly_evaluate_nmod(evalP, intbas, pts[k]);
-        nmod_mat_mul(res, evalP, E->coeffs + k);
+
+        if (k < E->length)
+            nmod_mat_mul(res, evalP, E->coeffs + k);
+        else
+            nmod_mat_zero(res);
 
         _shift_sort_permutation(perm, shift, m, tmp);
         nmod_mat_permute_rows(res, perm, NULL);
@@ -271,12 +275,12 @@ void nmod_mat_poly_mintbasis_rescomp(nmod_mat_poly_t intbas,
 void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
                                        slong * shift,
                                        const nmod_mat_poly_t E,
-                                       const ulong * pts)
+                                       const ulong * pts,
+                                       slong d)
 {
     const slong m = E->r;
     const slong n = E->c;
-    const slong d = E->length;
-
+    
     nmod_mat_poly_one(intbas);
 
     if (d == 0)
@@ -287,7 +291,10 @@ void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
         (nmod_mat_struct *)flint_malloc(d * sizeof(nmod_mat_struct));
     for (slong k = 0; k < d; k++) {
       nmod_mat_init(Res + k, m, n, E->mod.n);
-      nmod_mat_set(Res + k, E->coeffs + k);
+      if (k < E->length)
+            nmod_mat_set(Res + k, E->coeffs + k);
+        else
+            nmod_mat_zero(Res + k);
     }
 
     nmod_mat_t res;
@@ -444,16 +451,16 @@ void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
 void nmod_mat_poly_mintbasis(nmod_mat_poly_t intbas,
                              slong * shift,
                              const nmod_mat_poly_t E,
-                             const ulong * pts)
+                             const ulong * pts,
+                             slong d)
 {
     const slong m = E->r;
     const slong n = E->c;
-    const slong d = E->length;
 
     if (d * (m - n + 1) <= m)
-        nmod_mat_poly_mintbasis_resupdate(intbas, shift, E, pts);
+        nmod_mat_poly_mintbasis_resupdate(intbas, shift, E, pts, d);
     else
-        nmod_mat_poly_mintbasis_rescomp(intbas, shift, E, pts);
+        nmod_mat_poly_mintbasis_rescomp(intbas, shift, E, pts, d);
 }
 
 /* -*- mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */

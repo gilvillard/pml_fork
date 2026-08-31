@@ -1,0 +1,258 @@
+/*
+    Copyright (C) 2026 Gilles Villard
+
+    This file is part of PML.
+
+    PML is free software: you can redistribute it and/or modify it under
+    the terms of the GNU General Public License version 2.0 (GPL-2.0-or-later)
+    as published by the Free Software Foundation; either version 2 of the
+    License, or (at your option) any later version. See
+    <https://www.gnu.org/licenses/>.
+*/
+
+/** Targets nmod_poly_mat_mintbasis and nmod_poly_mat_pmintbasis directly.
+ * Uses nmod_poly_mat_is_interpolant_basis (verification.c, this same
+ * staging area) for the defining-property check.
+ * Also checks that nmod_poly_mat_pmintbasis, whose base case IS a direct
+ * call to nmod_poly_mat_mintbasis (see interpolant_basis.c), agrees with
+ * it bit-for-bit when d does not exceed the recursion threshold.
+ *
+ * Shift and E diversity: reuses testing_collection.h directly (this file's
+ * final home, src/nmod_poly_mat_extra/test/, is the same directory t-mbasis.c
+ * / t-pmbasis.c already pull it from), picking one of its 8 shift forms and
+ * one of its 7 matrix forms (zero, uniform, unbalanced row/column degree,
+ * randtest, sparse, rank-deficient) at random per trial via gen_shift/gen_E
+ * below.
+ * 
+ * Also includes an explicit very-small-prime stress block (prime in
+ * {2,3,5,7,11}), mirroring t-mintbasis.c's own -- see that file's header
+ * comment for why tiny fields are worth testing directly rather than relying
+ * on the main loop's nbits >= 20 floor.
+ */
+
+#include <flint/test_helpers.h>
+#include <flint/nmod_poly.h>
+#include <flint/ulong_extras.h>
+
+#include "nmod_poly_mat_interpolant.h"
+#include "testing_collection.h"
+
+/* One of testing_collection.h's 8 shift forms, chosen by index (matching
+   t-pmbasis.c's own one_test_pmbasis, which tries all 8 on a single input;
+   here we pick one at random per trial instead */ 
+static void gen_shift(slong * shift, slong m, slong d, flint_rand_t state)
+{
+    switch (n_randint(state, 8))
+    {
+        case 0: _test_collection_shift_uniform(shift, m); break;
+        case 1: _test_collection_shift_increasing(shift, m); break;
+        case 2: _test_collection_shift_decreasing(shift, m); break;
+        case 3: _test_collection_shift_shuffle(shift, m, state); break;
+        case 4: _test_collection_shift_hermite(shift, m, d); break;
+        case 5: _test_collection_shift_rhermite(shift, m, d); break;
+        case 6: _test_collection_shift_plateau(shift, m, d); break;
+        default: _test_collection_shift_rplateau(shift, m, d); break;
+    }
+}
+
+/* One of testing_collection.h's matrix forms, chosen by index (same
+   rationale as gen_shift above: pick one per trial rather than looping over
+   all of them). _test_collection_mat_rkdef degrades to the zero matrix on
+   its own when m <= 1 or n <= 1 (its own convention), so no guard is needed
+   here for that case. */
+static void gen_E(nmod_poly_mat_t E, slong d, flint_rand_t state)
+{
+    switch (n_randint(state, 7))
+    {
+        case 0: _test_collection_mat_zero(E); break;
+        case 1: _test_collection_mat_uniform(E, d, state); break;
+        case 2: _test_collection_mat_unbalanced_rdeg(E, d, state); break;
+        case 3: _test_collection_mat_unbalanced_cdeg(E, d, state); break;
+        case 4: _test_collection_mat_test(E, d, state); break;
+        case 5: _test_collection_mat_sparse(E, d, state); break;
+        default: _test_collection_mat_rkdef(E, d, state); break;
+    }
+}
+
+/* d is passed explicitly rather than read from E: unlike nmod_mat_poly_t
+   (whose ->length is the natural point count), an nmod_poly_mat_t's own
+   degree bound does not determine d on its own -- see this header's
+   "Conventions" section in nmod_poly_mat_interpolant.h. */
+static int core_test(const nmod_poly_mat_t E, const ulong * pts, slong d, const slong * shift0)
+{
+    const slong m = E->r;
+
+    slong * sh_pm = flint_malloc(m * sizeof(slong));
+    for (slong i = 0; i < m; i++)
+        sh_pm[i] = shift0[i];
+
+    nmod_poly_mat_t out_pm;
+    nmod_poly_mat_init(out_pm, m, m, E->modulus);
+    nmod_poly_mat_pmintbasis(out_pm, sh_pm, E, pts, d);
+
+    int res = 1;
+
+    /* base-case agreement: pmintbasis's own base case is a direct call to
+       mintbasis, so when d is within the threshold they must agree
+       bit-for-bit */
+    if (d <= PMINTBASIS_THRES)
+    {
+        slong * sh_m = flint_malloc(m * sizeof(slong));
+        for (slong i = 0; i < m; i++)
+            sh_m[i] = shift0[i];
+        nmod_poly_mat_t out_m;
+        nmod_poly_mat_init(out_m, m, m, E->modulus);
+        nmod_poly_mat_mintbasis(out_m, sh_m, E, pts, d);
+
+        if (!nmod_poly_mat_equal(out_pm, out_m))
+            res = 0;
+        for (slong i = 0; i < m; i++)
+            if (sh_pm[i] != sh_m[i])
+                res = 0;
+
+        nmod_poly_mat_clear(out_m);
+        flint_free(sh_m);
+    }
+
+    /* genuine minimal interpolant basis, w.r.t. the ORIGINAL shift0 */
+    if (res && !nmod_poly_mat_is_interpolant_basis(out_pm, E, pts, d, shift0, ROW_LOWER))
+        res = 0;
+
+    nmod_poly_mat_clear(out_pm);
+    flint_free(sh_pm);
+
+    return res;
+}
+
+TEST_FUNCTION_START(nmod_poly_mat_pmintbasis, state)
+{
+    int i, result;
+
+    /* explicit d=0 regression case */
+    for (i = 0; i < 20; i++)
+    {
+        slong n = 1 + n_randint(state, 10);
+        slong m = n + n_randint(state, 10);
+        ulong prime = n_randprime(state, 2 + n_randint(state, 60), 1);
+
+        nmod_poly_mat_t E, out;
+        nmod_poly_mat_init(E, m, n, prime);
+        nmod_poly_mat_init(out, m, m, prime);
+        slong * shift = flint_malloc(m * sizeof(slong));
+        for (slong j = 0; j < m; j++)
+            shift[j] = n_randint(state, 10);
+
+        nmod_poly_mat_pmintbasis(out, shift, E, NULL, 0);
+        if (!nmod_poly_mat_is_one(out))
+            TEST_FUNCTION_FAIL("d=0 case: m = %wd, n = %wd, prime = %wu\n", m, n, prime);
+
+        nmod_poly_mat_clear(E);
+        nmod_poly_mat_clear(out);
+        flint_free(shift);
+    }
+
+    for (i = 0; i < 100 * flint_test_multiplier(); i++)
+    {
+        slong n = 1 + n_randint(state, 16);
+        slong m = 1 + n_randint(state, 16); /* n <= m, including n == m */
+        slong d = n_randint(state, 150); /* well beyond a small overridden threshold */
+
+        /* nbits' floor must guarantee some prime of that bit length exceeds
+           bound, or the retry loop below never terminates (nbits is fixed
+           before the retry starts, so it can't grow to escape a bad draw).
+           Tying the floor to bound -- instead of a fixed constant such as
+           the 20 this replaces -- lets nbits range down as low as 3-4 bits
+           when d is small, closing a real gap this file used to leave
+           untested (nothing between the 20-59 bit main range and the
+           explicit {2,3,5,7,11} block below). */
+        ulong bound = (ulong) (2 * FLINT_MAX(d, 1) + 2);
+        ulong nbits = FLINT_BIT_COUNT(bound) + 1 + n_randint(state, 50);
+        ulong prime;
+        do { prime = n_randprime(state, nbits, 1); } while (prime <= bound);
+
+        nmod_poly_mat_t E;
+        nmod_poly_mat_init(E, m, n, prime);
+        gen_E(E, d, state);
+
+        ulong * pts = flint_malloc(FLINT_MAX(d, 1) * sizeof(ulong));
+        for (slong k = 0; k < d; k++)
+        {
+            int distinct;
+            do
+            {
+                pts[k] = n_randint(state, prime);
+                distinct = 1;
+                for (slong j = 0; j < k; j++)
+                    if (pts[j] == pts[k])
+                        distinct = 0;
+            } while (!distinct);
+        }
+
+        slong * shift0 = flint_malloc(m * sizeof(slong));
+        gen_shift(shift0, m, d, state);
+
+        result = core_test(E, pts, d, shift0);
+
+        if (!result)
+            TEST_FUNCTION_FAIL("prime = %wd, m = %wd, n = %wd, d = %wd\n", prime, m, n, d);
+
+        nmod_poly_mat_clear(E);
+        flint_free(pts);
+        flint_free(shift0);
+    }
+
+    /* explicit very-small-prime stress coverage, mirroring t-mintbasis.c's
+       own block (see its header comment for why: the main loop's `nbits`
+       floor of 20 never picks these, and the verifier's generation check is
+       an exact identity regardless of genericity, so tiny fields -- where
+       coincidental rank degeneracies at a point are the rule rather than
+       the exception -- are worth exercising directly). `d` is capped at
+       `prime` (the maximum number of distinct points available). */
+    {
+        ulong small_primes[] = {2, 3, 5, 7, 11};
+        for (slong sp = 0; sp < (slong)(sizeof(small_primes) / sizeof(small_primes[0])); sp++)
+        {
+            ulong prime = small_primes[sp];
+
+            for (i = 0; i < 20 * flint_test_multiplier(); i++)
+            {
+                slong n = 1 + n_randint(state, 16);
+                slong m = 1 + n_randint(state, 16); /* n <= m, including n == m */
+                slong d = n_randint(state, prime + 1); /* 0 <= d <= prime */
+
+                nmod_poly_mat_t E;
+                nmod_poly_mat_init(E, m, n, prime);
+                gen_E(E, d, state);
+
+                ulong * pts = flint_malloc(FLINT_MAX(d, 1) * sizeof(ulong));
+                for (slong k = 0; k < d; k++)
+                {
+                    int distinct;
+                    do
+                    {
+                        pts[k] = n_randint(state, prime);
+                        distinct = 1;
+                        for (slong j = 0; j < k; j++)
+                            if (pts[j] == pts[k])
+                                distinct = 0;
+                    } while (!distinct);
+                }
+
+                slong * shift0 = flint_malloc(m * sizeof(slong));
+                gen_shift(shift0, m, d, state);
+
+                result = core_test(E, pts, d, shift0);
+
+                if (!result)
+                    TEST_FUNCTION_FAIL("small-prime case: prime = %wu, m = %wd, n = %wd, d = %wd\n",
+                                       prime, m, n, d);
+
+                nmod_poly_mat_clear(E);
+                flint_free(pts);
+                flint_free(shift0);
+            }
+        }
+    }
+
+    TEST_FUNCTION_END(state);
+}

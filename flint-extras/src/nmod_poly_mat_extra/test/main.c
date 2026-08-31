@@ -24,6 +24,7 @@
 #include "t-mulmid.c"
 #include "t-mbasis.c"
 #include "t-pmbasis.c"
+#include "t-pmintbasis.c"
 #include "t-rand.c"
 #include "t-weak_popov_form.c"
 
@@ -41,6 +42,7 @@ test_struct tests[] =
     TEST_FUNCTION(nmod_poly_mat_mul_vandermonde),
     TEST_FUNCTION(nmod_poly_mat_mulmid),
     TEST_FUNCTION(nmod_poly_mat_pmbasis),
+    TEST_FUNCTION(nmod_poly_mat_pmintbasis),
     TEST_FUNCTION(nmod_poly_mat_rand),
     TEST_FUNCTION(nmod_poly_mat_weak_popov_form),
 };

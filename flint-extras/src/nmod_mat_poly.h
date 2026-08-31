@@ -737,6 +737,11 @@ void nmod_mat_poly_mbasis(nmod_mat_poly_t appbas,
  * iterative construction, with "coefficient of `P*F`" (order truncation)
  * replaced by "evaluation `P(pts_k)*E_k`" (interpolation).
  *
+ * * `d`, the number of points to use, is a separate explicit parameter
+ * rather than being read off `E->length`. `E_k`
+ * for `k >= E->length` is treated as the zero matrix, the same convention
+ * a polynomial's own coefficients follow past its length  
+ * 
  * At the end of the computation, the vector `shift` contains the shifted
  * row degree of `intbas`, for the input shift.
  *
@@ -777,7 +782,8 @@ void nmod_mat_poly_mbasis(nmod_mat_poly_t appbas,
 void nmod_mat_poly_mintbasis_rescomp(nmod_mat_poly_t intbas,
                                      slong * shift,
                                      const nmod_mat_poly_t E,
-                                     const ulong * pts);
+                                     const ulong * pts,
+                                     slong d);
 
 /** Variant of `mintbasis` (see @ref mintbasis) where we store the vector
  * of future residual values `Res[j] = intbas(pts[j])*E_j`, `j =
@@ -806,12 +812,13 @@ void nmod_mat_poly_mintbasis_rescomp(nmod_mat_poly_t intbas,
 void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
                                        slong * shift,
                                        const nmod_mat_poly_t E,
-                                       const ulong * pts);
+                                       const ulong * pts,
+                                       slong d);
 
 /** Main `mintbasis` function: chooses between
  * @ref nmod_mat_poly_mintbasis_rescomp and
  * @ref nmod_mat_poly_mintbasis_resupdate depending on the shape of `E`
- * and its number of points `d` (`E->length`).
+ * and its number of points `d`.
  *
  * The condition here, `d*(m-n+1) <= m`, was found by direct measurement
  * over a grid of `(m,n,d)`.
@@ -821,7 +828,8 @@ void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
 void nmod_mat_poly_mintbasis(nmod_mat_poly_t intbas,
                              slong * shift,
                              const nmod_mat_poly_t E,
-                             const ulong * pts);
+                             const ulong * pts,
+                             slong d);
 
 //@} // doxygen group: M-IntBasis algorithm (uniform number of interpolation points)
 
