@@ -183,23 +183,18 @@ void nmod_poly_mat_mintbasis(nmod_poly_mat_t intbas,
  * These functions compute a `shift`-minimal ordered weak Popov interpolant
  * basis for `(E,pts)`, `d` = number of points, using a divide and conquer
  * approach mirroring `pmbasis` (see @ref pmbasis,
- * `nmod_poly_mat_approximant.h`): split the POINT LIST in half (rather
+ * `nmod_poly_mat_approximant.h`): split the point list in half (rather
  * than the order), compute a first basis for the first half of the
  * points, find the residual matrix for the second half, compute a second
  * basis for it, and deduce the sought basis by multiplying the two.
  *
- * Unlike `pmbasis`'s residual step (a middle product), the residual here
- * (Step 3 of HNS19's Algorithm 5) is `d2` independent evaluate-then-
- * multiply operations, `R_i = P1(pts[d1+i])*E_{d1+i}`, `i=0..d2-1` -- no
- * polynomial-arithmetic trick is needed, since there is no analogue of
+ * The residual here is `d2` independent evaluate-then-multiply operations, 
+ * `R_i = P1(pts[d1+i])*E_{d1+i}`, `i=0..d2-1` -- no analogue of
  * `pmbasis`'s middle product for interpolation.
  *
  * At the end of the computation, the vector `shift` contains the shifted
  * row degree of `intbas`, for the input shift.
  *
- * This is the algorithm PM-IntBasis from
- *  - S. Hyun, V. Neiger, E. Schost. Proceedings ISSAC 2019 (sec. 3.2,
- *    Algorithm 5).
  */
 //@{
 
@@ -219,28 +214,15 @@ void nmod_poly_mat_pmintbasis(nmod_poly_mat_t intbas,
  * \anchor pmintbasis_geometric
  *
  * Same divide-and-conquer shape as @ref pmintbasis, specialized to
- * GEOMETRIC points `pts_k = r^{2k}` (`r` a field element of sufficient
+ * geometric points `pts_k = r^{2k}` (`r` a field element of sufficient
  * multiplicative order), via FLINT's Bostan-Schost fast geometric-
  * progression evaluate/interpolate machinery (`nmod_geometric_progression_t`,
- * `nmod_poly.h`). One such structure is built ONCE, at the top of the
+ * `nmod_poly.h`). One such structure is built once, at the top of the
  * whole recursion, and reused (at varying, always-shorter requested
  * lengths, a documented property of that structure: "requires olen <=
  * G->len") at every recursion level and for every matrix entry -- this
  * sharing is what makes this specialization consistently faster than the
- * general-points @ref nmod_poly_mat_pmintbasis at matching sizes, closing
- * most and often all of the general-vs-geometric-points overhead gap
- * predicted by HNS19's own Prop. 3.1.
- *
- * NOTE: despite the similar name, this is UNRELATED to the declared-but-
- * unimplemented @ref nmod_poly_mat_pmbasis_geometric in
- * `nmod_poly_mat_approximant.h`, whose own doc comment describes a
- * different idea entirely (using a geometric-progression-based fast
- * MATRIX MULTIPLICATION for the appbas1*appbas2 combine step of the
- * *approximant* `pmbasis`, an internal multiplication speedup). This
- * function's "geometric" refers to the INTERPOLATION POINTS themselves
- * being a geometric progression, the defining input of an interpolant
- * basis problem, not a multiplication algorithm choice for a different
- * (approximant) problem.
+ * general-points @ref nmod_poly_mat_pmintbasis at matching sizes.
  */
 //@{
 
@@ -255,7 +237,7 @@ void nmod_poly_mat_pmintbasis(nmod_poly_mat_t intbas,
  * t-evaluate_geometric_nmod_vec_fast.c`). If `pts` is non-NULL, it is
  * filled with the `d` points actually used (`pts[k] = r^{2k}`), matching
  * @ref nmod_poly_mat_pmintbasis's own point-array convention -- useful for
- * cross-checking against the general-points algorithm on the SAME
+ * cross-checking against the general-points algorithm on the same
  * instance. */
 void nmod_poly_mat_pmintbasis_geometric(nmod_poly_mat_t intbas,
                                         slong * shift,
