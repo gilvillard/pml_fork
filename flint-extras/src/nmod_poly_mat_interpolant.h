@@ -114,6 +114,41 @@
 extern "C" {
 #endif
 
+/** @name General interface for interpolant basis verification*/
+//@{
+
+/** Verifying if a matrix is a minimal interpolant basis.
+ *
+ * This checks whether the matrix `intbas` is a `shift`-minimal interpolant
+ * basis for (`E`,`pts`) for the required form (currently hardcoded to
+ * ordered weak Popov, matching this same current limitation in PML's own
+ * `nmod_poly_mat_is_approximant_basis`, `nmod_poly_mat_approximant.h`).
+ * TO SEE.
+ * 
+ * The direct interpolant-basis counterpart of that function -- see
+ * `verification.c` (this same staging area) for the full derivation of
+ * how its two order-truncation-specific pieces (membership, generation)
+ * were adapted to points. 
+ *
+ * \param[in] intbas interpolant basis
+ * \param[in] E the input matrix, as `d` constant matrices (see this
+ *   header's own "Conventions" section)
+ * \param[in] pts the `d` pairwise distinct interpolation points
+ * \param[in] d number of points
+ * \param[in] shift shift
+ * \param[in] orient indicates the orientation (left/right interpolants)
+ *   and the definition of pivots
+ *
+ * \return boolean, result of the verification
+ */
+int nmod_poly_mat_is_interpolant_basis(const nmod_poly_mat_t intbas,
+                                       const nmod_poly_mat_t E,
+                                       const ulong * pts,
+                                       slong d,
+                                       const slong * shift,
+                                       orientation_t orient);
+
+//@} // doxygen group: General interface for interpolant basis verification
 
 /** @name M-IntBasis algorithm (uniform number of interpolation points)
  *
@@ -232,41 +267,6 @@ void nmod_poly_mat_pmintbasis_geometric(nmod_poly_mat_t intbas,
 //@} // doxygen group: PM-IntBasis algorithm, geometric points
 
 
-/** @name General interface for interpolant basis verification*/
-//@{
-
-/** Verifying if a matrix is a minimal interpolant basis.
- *
- * This checks whether the matrix `intbas` is a `shift`-minimal interpolant
- * basis for (`E`,`pts`) for the required form (currently hardcoded to
- * ordered weak Popov, matching this same current limitation in PML's own
- * `nmod_poly_mat_is_approximant_basis`, `nmod_poly_mat_approximant.h`).
- * TO SEE.
- * 
- * The direct interpolant-basis counterpart of that function -- see
- * `verification.c` (this same staging area) for the full derivation of
- * how its two order-truncation-specific pieces (membership, generation)
- * were adapted to points. 
- *
- * \param[in] intbas interpolant basis
- * \param[in] E the input matrix, as `d` constant matrices (see this
- *   header's own "Conventions" section)
- * \param[in] pts the `d` pairwise distinct interpolation points
- * \param[in] d number of points
- * \param[in] shift shift
- * \param[in] orient indicates the orientation (left/right interpolants)
- *   and the definition of pivots
- *
- * \return boolean, result of the verification
- */
-int nmod_poly_mat_is_interpolant_basis(const nmod_poly_mat_t intbas,
-                                       const nmod_poly_mat_t E,
-                                       const ulong * pts,
-                                       slong d,
-                                       const slong * shift,
-                                       orientation_t orient);
-
-//@} // doxygen group: General interface for interpolant basis verification
 
 
 #ifdef __cplusplus

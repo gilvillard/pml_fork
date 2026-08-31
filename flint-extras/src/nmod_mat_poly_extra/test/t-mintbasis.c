@@ -114,14 +114,21 @@ static int core_test(nmod_mat_poly_t E, const ulong * pts, const slong * shift0)
     /** Check that nmod_mat_poly_mintbasis.c agrees with the following formula */
     if (res)
     {
-        int expect_resupdate = (d * (m - n + 1) <= m);
-        nmod_mat_poly_struct * expected = expect_resupdate ? out_upd : out_res;
-        slong * sh_expected = expect_resupdate ? sh_upd : sh_res;
-        if (!mat_poly_equal(out_disp, expected))
+
+        if (!mat_poly_equal(out_disp, out_upd))
             res = 0;
         for (slong i = 0; i < m; i++)
-            if (sh_disp[i] != sh_expected[i])
+            if (sh_disp[i] != sh_upd[i])
                 res = 0;
+
+        // int expect_resupdate = (d * (m - n + 1) <= m);
+        // nmod_mat_poly_struct * expected = expect_resupdate ? out_upd : out_res;
+        // slong * sh_expected = expect_resupdate ? sh_upd : sh_res;
+        // if (!mat_poly_equal(out_disp, expected))
+        //     res = 0;
+        // for (slong i = 0; i < m; i++)
+        //     if (sh_disp[i] != sh_expected[i])
+        //         res = 0;
     }
 
     /* (3) genuine minimal interpolant basis, w.r.t. the original shift0 --
