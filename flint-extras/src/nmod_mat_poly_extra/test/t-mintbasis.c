@@ -111,7 +111,6 @@ static int core_test(nmod_mat_poly_t E, const ulong * pts, const slong * shift0)
             res = 0;
 
     /* (2) dispatcher matches whichever variant it should have picked */
-    /** Check that nmod_mat_poly_mintbasis.c agrees with the following formula */
     if (res)
     {
 

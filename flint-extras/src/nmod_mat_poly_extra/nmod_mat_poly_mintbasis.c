@@ -185,23 +185,29 @@ void nmod_mat_poly_mintbasis_rescomp(nmod_mat_poly_t intbas,
                 _nmod_mat_poly_set_length(intbas, intbas->length + 1);
                 break;
             }
-        for (slong deg = intbas->length - 1; deg > 0; deg--)
-            for (slong i = 0; i < m - nullity; i++)
-            {
-                ulong * dst = nmod_mat_poly_entry_ptr(intbas, deg, i, 0);
-                ulong * prev = nmod_mat_poly_entry_ptr(intbas, deg - 1, i, 0);
-                for (slong j = 0; j < m; j++)
-                    dst[j] = nmod_sub(prev[j], nmod_mul(pts[k], dst[j], intbas->mod), intbas->mod);
-            }
+
+        /** 
+         * Recentering uses _nmod_vec_scalar_mul_nmod (dispatches to a 
+         * Shoup-precomputed multiply internally) + _nmod_vec_add instead 
+         * of a manual per-entry nmod_mul/nmod_sub loop. */
+
         {
             ulong neg_pt = nmod_neg(pts[k], intbas->mod);
+            for (slong deg = intbas->length - 1; deg > 0; deg--)
+                for (slong i = 0; i < m - nullity; i++)
+                {
+                    ulong * dst = nmod_mat_poly_entry_ptr(intbas, deg, i, 0);
+                    ulong * prev = nmod_mat_poly_entry_ptr(intbas, deg - 1, i, 0);
+                    _nmod_vec_scalar_mul_nmod(dst, dst, m, neg_pt, intbas->mod);
+                    _nmod_vec_add(dst, dst, prev, m, intbas->mod);
+                }
             for (slong i = 0; i < m - nullity; i++)
             {
                 ulong * dst = nmod_mat_poly_entry_ptr(intbas, 0, i, 0);
-                for (slong j = 0; j < m; j++)
-                    dst[j] = nmod_mul(neg_pt, dst[j], intbas->mod);
+                _nmod_vec_scalar_mul_nmod(dst, dst, m, neg_pt, intbas->mod);
             }
         }
+
 
         _perm_inv(pivots, pivots, m);
         nmod_mat_poly_permute_rows(intbas, pivots, NULL);
@@ -277,11 +283,11 @@ void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
         return;
 
     /* Res[k] = intbas(pts[k])*E_k; initially intbas=Id so Res[k] = E_k */
-    nmod_mat_struct * Res = (nmod_mat_struct *) flint_malloc(d * sizeof(nmod_mat_struct));
-    for (slong k = 0; k < d; k++)
-    {
-        nmod_mat_init(Res + k, m, n, E->mod.n);
-        nmod_mat_set(Res + k, E->coeffs + k);
+    nmod_mat_struct *Res =
+        (nmod_mat_struct *)flint_malloc(d * sizeof(nmod_mat_struct));
+    for (slong k = 0; k < d; k++) {
+      nmod_mat_init(Res + k, m, n, E->mod.n);
+      nmod_mat_set(Res + k, E->coeffs + k);
     }
 
     nmod_mat_t res;
@@ -367,31 +373,33 @@ void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
             nmod_mat_clear(ns_res);
         }
 
+        
         /* X-pts[k] recentering of intbas's own top m-nullity rows --
-           identical to the rescomp version (genuine polynomial coefficients) */
+            vectorized _nmod_vec_scalar_mul_nmod + _nmod_vec_add */
         for (slong i = 0; i < m - nullity; i++)
+        {
             if (!_nmod_vec_is_zero(nmod_mat_poly_entry_ptr(intbas, intbas->length - 1, i, 0), m))
             {
                 nmod_mat_poly_fit_length(intbas, intbas->length + 1);
                 _nmod_mat_poly_set_length(intbas, intbas->length + 1);
                 break;
             }
+        }
+
+        
+        ulong neg_pt = nmod_neg(pts[k], intbas->mod);
         for (slong deg = intbas->length - 1; deg > 0; deg--)
             for (slong i = 0; i < m - nullity; i++)
             {
                 ulong * dst = nmod_mat_poly_entry_ptr(intbas, deg, i, 0);
                 ulong * prev = nmod_mat_poly_entry_ptr(intbas, deg - 1, i, 0);
-                for (slong j = 0; j < m; j++)
-                    dst[j] = nmod_sub(prev[j], nmod_mul(pts[k], dst[j], intbas->mod), intbas->mod);
+                _nmod_vec_scalar_mul_nmod(dst, dst, m, neg_pt, intbas->mod);
+                _nmod_vec_add(dst, dst, prev, m, intbas->mod);
             }
+        for (slong i = 0; i < m - nullity; i++)
         {
-            ulong neg_pt = nmod_neg(pts[k], intbas->mod);
-            for (slong i = 0; i < m - nullity; i++)
-            {
                 ulong * dst = nmod_mat_poly_entry_ptr(intbas, 0, i, 0);
-                for (slong j = 0; j < m; j++)
-                    dst[j] = nmod_mul(neg_pt, dst[j], intbas->mod);
-            }
+                _nmod_vec_scalar_mul_nmod(dst, dst, m, neg_pt, intbas->mod);
         }
 
         /* top m-nullity rows of the LIVE residuals: scalar multiply by
@@ -429,7 +437,7 @@ void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
  * Both variants always agree bit-for-bit, so this dispatch is a pure
  * timing decision, never a correctness one.
  *
- * The condition here, `d*(m-n+1) <= m`, was found by direct measurement
+ * The condition here, `d*(m-n+1) <= m`, was found by measurement
  * over a grid of `(m,n,d)`.
  * 
  * \todo investigate for a better dispatcher.  */
