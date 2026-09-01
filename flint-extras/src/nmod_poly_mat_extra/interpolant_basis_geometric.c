@@ -12,6 +12,8 @@
 
 #include <flint/nmod.h>
 #include <flint/nmod_vec.h>
+
+#include "nmod_extra.h"
 #include "nmod_poly_mat_multiply.h"
 #include "nmod_poly_mat_interpolant.h"
 #include "nmod_mat_poly.h"
@@ -150,6 +152,12 @@ void nmod_poly_mat_pmintbasis_geometric(nmod_poly_mat_t intbas,
                                         slong d,
                                         ulong * pts)
 {
+    if (d == 0)
+    {
+        nmod_poly_mat_one(intbas);
+        return;
+    }
+
     nmod_t mod;
     nmod_init(&mod, E->modulus);
 
@@ -171,3 +179,37 @@ void nmod_poly_mat_pmintbasis_geometric(nmod_poly_mat_t intbas,
         }
     }
 }
+
+
+/**  Tries `nmod_find_root` (`nmod_extra.h`) first, rather than going
+ * straight to `n_primitive_root_prime` 
+ * (`ulong_extras.h`, used by this PR's own tests/benchmarks to pick `r`):
+ * the algorithm only needs an element of multiplicative order strictly
+ * greater than `2*d`. */
+void nmod_poly_mat_pmintbasis_geometric_auto(nmod_poly_mat_t intbas,
+                                             slong * shift,
+                                             const nmod_poly_mat_t E,
+                                             slong d,
+                                             ulong * pts)
+{
+    if (d == 0)
+    {
+        nmod_poly_mat_pmintbasis_geometric(intbas, shift, E, 0, d, pts);
+        return;
+    }
+
+    nmod_t mod;
+    nmod_init(&mod, E->modulus);
+
+    ulong r = nmod_find_root(2 * d + 2, mod);
+    if (r == 0)
+        r = n_primitive_root_prime(mod.n);
+    if (r == 0)
+        flint_throw(FLINT_ERROR,
+                    "Exception (nmod_poly_mat_pmintbasis_geometric_auto). "
+                    "No element of multiplicative order > 2*d found "
+                    "(modulus too small for d = %wd points).\n", d);
+
+    nmod_poly_mat_pmintbasis_geometric(intbas, shift, E, r, d, pts);
+}
+

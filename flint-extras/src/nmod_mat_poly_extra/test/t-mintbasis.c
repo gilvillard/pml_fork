@@ -80,7 +80,7 @@ static int check_d0(slong m, slong n, ulong prime, flint_rand_t state)
 }
 
 /* returns 1 if the trial passed all checks, 0 otherwise */
-static int core_test(nmod_mat_poly_t E, const ulong * pts, slong d, const slong * shift0)
+static int core_test_mintbasis(nmod_mat_poly_t E, const ulong * pts, slong d, const slong * shift0)
 {
     const slong m = E->r;
     const slong n = E->c;
@@ -213,7 +213,7 @@ TEST_FUNCTION_START(nmod_mat_poly_mintbasis, state)
         for (slong j = 0; j < m; j++)
             shift0[j] = (n_randint(state, 4) == 0) ? n_randint(state, 20) : 0;
 
-        result = core_test(E, pts, d, shift0);
+        result = core_test_mintbasis(E, pts, d, shift0);
 
         if (!result)
             TEST_FUNCTION_FAIL("prime = %wd, m = %wd, n = %wd, d = %wd\n",
@@ -259,7 +259,7 @@ TEST_FUNCTION_START(nmod_mat_poly_mintbasis, state)
                 for (slong j = 0; j < m; j++)
                     shift0[j] = (n_randint(state, 4) == 0) ? n_randint(state, 20) : 0;
 
-                result = core_test(E, pts, d, shift0);
+                result = core_test_mintbasis(E, pts, d, shift0);
 
                 if (!result)
                     TEST_FUNCTION_FAIL("small-prime case: prime = %wu, m = %wd, n = %wd, d = %wd\n",

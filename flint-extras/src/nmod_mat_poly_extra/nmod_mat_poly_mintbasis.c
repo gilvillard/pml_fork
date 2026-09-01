@@ -270,7 +270,7 @@ void nmod_mat_poly_mintbasis_rescomp(nmod_mat_poly_t intbas,
  * (cdim near rdim) and the fewer points relative to rdim, the more this
  * saving outweighs resupdate's own extra recentering cost. The win is
  * strongest and scales with `rdim`.  See
- * nmod_mat_poly_mintbasis below for the dispatch condition this measurement
+ * nmod_mat_poly_mintbasis below for the dispatch condition measurements
  * led to. */
 void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
                                        slong * shift,
@@ -439,7 +439,7 @@ void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
 /** Main `mintbasis` function: chooses between
  * @ref nmod_mat_poly_mintbasis_rescomp and
  * @ref nmod_mat_poly_mintbasis_resupdate depending on the shape of `E`
- * and its number of points `d` (`E->length`).
+ * and the number of points `d` s.t. `d <= (actual length of pts)`.
  * 
  * Both variants always agree bit-for-bit, so this dispatch is a pure
  * timing decision, never a correctness one.

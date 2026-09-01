@@ -19,7 +19,7 @@
  * Consider:
  *   - an m x n matrix of univariate polynomials, given as `d` matrices
  *     `E = (E_1,...,E_d)` in `K^{m x n}` (the coefficients of E at `d`
- *     specific, pairwise distinct points `pts = (pts_1,...,pts_d)`, NOT
+ *     specific, pairwise distinct points `pts = (pts_1,...,pts_d)` (not)
  *     the coefficients of a polynomial matrix in the usual monomial
  *     basis),
  *   - the points `pts` themselves.
@@ -55,25 +55,27 @@
 /** \file nmod_poly_mat_interpolant.h
  * Conventions.
  * ------------
- * As in `nmod_poly_mat_approximant.h`, all functions below compute LEFT
+ * As in `nmod_poly_mat_approximant.h`, all functions below compute left
  * interpolant bases (the basis elements are the rows of the output
  * matrix).
  *
  * Most functions below use the following parameters.
  *
  * \param[out] intbas the output interpolant basis (cannot alias `E`)
- * \param[in] E the input matrix, given as `d` constant matrices (the
- *   coefficients of `E` AT the points `pts`, not in the monomial basis) --
- *   `d` is `E->length` when `E` is an `nmod_mat_poly_t`, or a separate
- *   `d` parameter (matching `pts`'s own length) when `E` is an
- *   `nmod_poly_mat_t` genuinely storing `E_k` as the coefficient of degree
- *   `k` (this is a convenient, valid encoding of the same `d`-tuple of
- *   constant matrices, not a claim that `E` itself has any interpolation
- *   meaning as a polynomial matrix)
- * \param[in] pts the `d` pairwise distinct interpolation points
+ * \param[in] E the input matrix, representing `d` constant matrices (the
+ *   coefficients of `E` at the points `pts`, not in the monomial basis).
+ *  At the M-level, `E` is an `nmod_mat_poly_t`, at the PM-level 
+ *   `E` is an `nmod_poly_mat_t`, 
+ *  storing `E_k` as the coefficient of degree `k` (this is a convenient, 
+ *   valid encoding of the same `d`-tuple of constant matrices (not a claim 
+ *   that `E` itself has any interpolation meaning as a polynomial matrix). 
+ *  `E_k` is zero when `k >= E->length`or when `k` is greater than the degree 
+ *   of E. 
+ * \param[in] pts the `d` pairwise distinct interpolation points.
+ * \param[in] `d` is a separate parameter such that `d <= (actual length of pts)`.
  * \param[in,out] shift in: the input shift; and out: the output shifted row
  *   degree of `intbas` (list of integers, length must be the number of
- *   rows of `E`)
+ *   rows of `E`).
  * 
  * Nota.
  * -----
@@ -88,7 +90,6 @@
  * 
  * 
  * The algorithms are inspired from: 
- *   - PML/ntl-extras
  *   - B. Beckermann and G. Labahn. 2000. Fraction-free computation of matrix 
  *     rational interpolant and matrix gcds. 
  *     SIAM J. Matrix Anal. Appl. 22, 1 (2000), 114–144.
@@ -96,6 +97,7 @@
  *     Computing minimal interpolation bases. 
  *     J. Symbolic Comput. 83 (2017), 272–314.
  * and can be found in 
+ *  - PML/ntl-extras
  *  - S. Hyun, V. Neiger, E. Schost. Proceedings ISSAC 2019. 
  *
  */
@@ -133,10 +135,11 @@ extern "C" {
  * were adapted to points. 
  *
  * \param[in] intbas interpolant basis
- * \param[in] E the input matrix, as `d` constant matrices (see this
+ * \param[in] E the input matrix, representing `d` constant matrices (see this
  *   header's own "Conventions" section)
  * \param[in] pts the `d` pairwise distinct interpolation points
- * \param[in] d number of points
+ * \param[in] d number of points to actually consider, such that 
+ *   `d <= (actual length of pts)`.
  * \param[in] shift shift
  * \param[in] orient indicates the orientation (left/right interpolants)
  *   and the definition of pivots
@@ -236,7 +239,7 @@ void nmod_poly_mat_pmintbasis(nmod_poly_mat_t intbas,
  * Requires a modulus `p > 2*d+1` so that `r`'s multiplicative order
  * suffices for the underlying geometric-progression machinery (matching
  * FLINT's own convention for that machinery, `nmod_poly/test/
- * t-evaluate_geometric_nmod_vec_fast.c`). If `pts` is non-NULL, it is
+ * t-evaluate_geometric_nmod_vec_fast.c`). If `pts` is non-null, it is
  * filled with the `d` points actually used (`pts[k] = r^{2k}`), matching
  * @ref nmod_poly_mat_pmintbasis's own point-array convention -- useful for
  * cross-checking against the general-points algorithm on the same
@@ -247,6 +250,43 @@ void nmod_poly_mat_pmintbasis_geometric(nmod_poly_mat_t intbas,
                                         ulong r,
                                         slong d,
                                         ulong * pts);
+
+
+/** Tries `nmod_find_root` (`nmod_extra.h`) first, rather than going
+ * straight to `n_primitive_root_prime`
+ * (`ulong_extras.h`, used by this PR's own tests/benchmarks to pick `r`):
+ * the algorithm only needs an element of multiplicative order strictly
+ * greater than `2*d` (so that `rho = r^2`'s own order exceeds `d`, the
+ * number of points requested -- see nmod_poly_mat_interpolant.h's own
+ * "Requires a modulus p > 2*d+1" precondition on @ref
+ * nmod_poly_mat_pmintbasis_geometric), not a genuine primitive root
+ * (order exactly `p-1`, generating the whole multiplicative group).
+ * Unlike `n_primitive_root_prime`, `nmod_find_root` needs no factoring of
+ * `p-1` -- cheaper, and the natural choice for a caller who has no other
+ * need for a genuine primitive root.
+ *
+ * `nmod_find_root(2*d+2, mod)` is the right call for this: it guarantees
+ * an element `r` of order `>= 2*d+2`, hence `rho = r^2` has order
+ * `>= (2*d+2)/2 = d+1 > d` (the order of `rho` is `order(r)` divided by
+ * `gcd(2,order(r))`, i.e. at worst halved), satisfying the precondition
+ * with no factoring needed.
+ *
+ * Requires a modulus `p > 2*d+1` (same precondition as the `r`-explicit
+ * version, inherited unchanged); throws if no element of sufficient order
+ * is found, rather than silently proceeding with a degenerate `r` (0) --
+ * mirroring how "cannot proceed" cases are handled elsewhere in this
+ * project (e.g. v01's own `!Cert` handling) rather than risking a wrong
+ * answer. `d = 0` needs no such element at all (matching @ref
+ * nmod_poly_mat_pmintbasis_geometric's own `d == 0` guard, which returns
+ * before `r` is ever used), so this never throws when `d = 0`, regardless
+ * of how small the modulus is. */
+
+
+void nmod_poly_mat_pmintbasis_geometric_auto(nmod_poly_mat_t intbas,
+                                             slong * shift,
+                                             const nmod_poly_mat_t E,
+                                             slong d,
+                                             ulong * pts);
 
 //@} // doxygen group: PM-IntBasis algorithm, geometric points
 

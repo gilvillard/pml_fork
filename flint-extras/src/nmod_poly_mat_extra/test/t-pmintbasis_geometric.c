@@ -40,44 +40,44 @@
 #include "nmod_poly_mat_interpolant.h"
 #include "testing_collection.h"
 
-/* One of testing_collection.h's 8 shift forms, chosen by index (matching
-   t-pmbasis.c's own one_test_pmbasis, which tries all 8 on a single input;
-   here we pick one at random per trial instead */ 
-static void gen_shift(slong * shift, slong m, slong d, flint_rand_t state)
-{
-    switch (n_randint(state, 8))
-    {
-        case 0: _test_collection_shift_uniform(shift, m); break;
-        case 1: _test_collection_shift_increasing(shift, m); break;
-        case 2: _test_collection_shift_decreasing(shift, m); break;
-        case 3: _test_collection_shift_shuffle(shift, m, state); break;
-        case 4: _test_collection_shift_hermite(shift, m, d); break;
-        case 5: _test_collection_shift_rhermite(shift, m, d); break;
-        case 6: _test_collection_shift_plateau(shift, m, d); break;
-        default: _test_collection_shift_rplateau(shift, m, d); break;
-    }
-}
+// /* One of testing_collection.h's 8 shift forms, chosen by index (matching
+//    t-pmbasis.c's own one_test_pmbasis, which tries all 8 on a single input;
+//    here we pick one at random per trial instead */ 
+// static void gen_shift(slong * shift, slong m, slong d, flint_rand_t state)
+// {
+//     switch (n_randint(state, 8))
+//     {
+//         case 0: _test_collection_shift_uniform(shift, m); break;
+//         case 1: _test_collection_shift_increasing(shift, m); break;
+//         case 2: _test_collection_shift_decreasing(shift, m); break;
+//         case 3: _test_collection_shift_shuffle(shift, m, state); break;
+//         case 4: _test_collection_shift_hermite(shift, m, d); break;
+//         case 5: _test_collection_shift_rhermite(shift, m, d); break;
+//         case 6: _test_collection_shift_plateau(shift, m, d); break;
+//         default: _test_collection_shift_rplateau(shift, m, d); break;
+//     }
+// }
 
-/* One of testing_collection.h's matrix forms, chosen by index (same
-   rationale as gen_shift above: pick one per trial rather than looping over
-   all of them). _test_collection_mat_rkdef degrades to the zero matrix on
-   its own when m <= 1 or n <= 1 (its own convention), so no guard is needed
-   here for that case. */
-static void gen_E(nmod_poly_mat_t E, slong d, flint_rand_t state)
-{
-    switch (n_randint(state, 7))
-    {
-        case 0: _test_collection_mat_zero(E); break;
-        case 1: _test_collection_mat_uniform(E, d, state); break;
-        case 2: _test_collection_mat_unbalanced_rdeg(E, d, state); break;
-        case 3: _test_collection_mat_unbalanced_cdeg(E, d, state); break;
-        case 4: _test_collection_mat_test(E, d, state); break;
-        case 5: _test_collection_mat_sparse(E, d, state); break;
-        default: _test_collection_mat_rkdef(E, d, state); break;
-    }
-}
+// /* One of testing_collection.h's matrix forms, chosen by index (same
+//    rationale as gen_shift above: pick one per trial rather than looping over
+//    all of them). _test_collection_mat_rkdef degrades to the zero matrix on
+//    its own when m <= 1 or n <= 1 (its own convention), so no guard is needed
+//    here for that case. */
+// static void gen_E(nmod_poly_mat_t E, slong d, flint_rand_t state)
+// {
+//     switch (n_randint(state, 7))
+//     {
+//         case 0: _test_collection_mat_zero(E); break;
+//         case 1: _test_collection_mat_uniform(E, d, state); break;
+//         case 2: _test_collection_mat_unbalanced_rdeg(E, d, state); break;
+//         case 3: _test_collection_mat_unbalanced_cdeg(E, d, state); break;
+//         case 4: _test_collection_mat_test(E, d, state); break;
+//         case 5: _test_collection_mat_sparse(E, d, state); break;
+//         default: _test_collection_mat_rkdef(E, d, state); break;
+//     }
+// }
 
-static int core_test(slong m, slong n, slong d, ulong p, flint_rand_t state)
+static int core_test_pmintbasis_geometric(slong m, slong n, slong d, ulong p, flint_rand_t state)
 {
     /* r must have sufficient multiplicative order: none of the first d
        powers of r^2 should be 1 -- matching FLINT's own test convention
@@ -132,8 +132,8 @@ TEST_FUNCTION_START(nmod_poly_mat_pmintbasis_geometric, state)
     for (i = 0; i < 100 * flint_test_multiplier(); i++)
     {
         slong n = 1 + n_randint(state, 16);
-        slong m = n + n_randint(state, 16);
-        slong d = 1 + n_randint(state, 150);
+        slong m = 1 + n_randint(state, 16);
+        slong d = 1 + n_randint(state, 250);
 
         /* nbits' floor must guarantee some prime of that bit length
            exceeds bound = 2d+1 (this algorithm's own requirement), or the
@@ -144,7 +144,7 @@ TEST_FUNCTION_START(nmod_poly_mat_pmintbasis_geometric, state)
         ulong p;
         do { p = n_randprime(state, nbits, 1); } while (p <= bound);
 
-        result = core_test(m, n, d, p, state);
+        result = core_test_pmintbasis_geometric(m, n, d, p, state);
 
         if (!result)
             TEST_FUNCTION_FAIL("m = %wd, n = %wd, d = %wd, p = %wu\n", m, n, d, p);
@@ -164,7 +164,7 @@ TEST_FUNCTION_START(nmod_poly_mat_pmintbasis_geometric, state)
                 slong m = n + n_randint(state, 4);
                 slong d = n_randint(state, max_d + 1); /* 0 <= d <= max_d */
 
-                result = core_test(m, n, d, p, state);
+                result = core_test_pmintbasis_geometric(m, n, d, p, state);
 
                 if (!result)
                     TEST_FUNCTION_FAIL("small-prime case: p = %wu, m = %wd, n = %wd, d = %wd\n",
