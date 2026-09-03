@@ -103,7 +103,7 @@ static int core_test_mintbasis(nmod_mat_poly_t E, const ulong * pts, slong d, co
     int res = 1;
 
     /* (1) rescomp == resupdate, bit-for-bit */
-    if (!mat_poly_equal(out_res, out_upd))
+    if (!nmod_mat_poly_equal(out_res, out_upd))
         res = 0;
     for (slong i = 0; i < m; i++)
         if (sh_res[i] != sh_upd[i])
@@ -113,7 +113,7 @@ static int core_test_mintbasis(nmod_mat_poly_t E, const ulong * pts, slong d, co
     if (res)
     {
 
-        if (!mat_poly_equal(out_disp, out_upd))
+        if (!nmod_mat_poly_equal(out_disp, out_upd))
             res = 0;
         for (slong i = 0; i < m; i++)
             if (sh_disp[i] != sh_upd[i])
@@ -122,7 +122,7 @@ static int core_test_mintbasis(nmod_mat_poly_t E, const ulong * pts, slong d, co
         // int expect_resupdate = (d * (m - n + 1) <= m);
         // nmod_mat_poly_struct * expected = expect_resupdate ? out_upd : out_res;
         // slong * sh_expected = expect_resupdate ? sh_upd : sh_res;
-        // if (!mat_poly_equal(out_disp, expected))
+        // if (!nmod_mat_poly_equal(out_disp, expected))
         //     res = 0;
         // for (slong i = 0; i < m; i++)
         //     if (sh_disp[i] != sh_expected[i])

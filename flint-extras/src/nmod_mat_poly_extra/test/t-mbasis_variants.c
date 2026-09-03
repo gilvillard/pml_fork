@@ -94,7 +94,7 @@ static int core_test_mbasis_variants(nmod_mat_poly_t matp, slong order, const sl
     int res = 1;
 
     /* (1) rescomp == resupdate, bit-for-bit */
-    if (!mat_poly_equal(app_res, app_upd))
+    if (!nmod_mat_poly_equal(app_res, app_upd))
         res = 0;
     for (slong i = 0; i < rdim; i++)
         if (sh_res[i] != sh_upd[i])
@@ -106,7 +106,7 @@ static int core_test_mbasis_variants(nmod_mat_poly_t matp, slong order, const sl
         int expect_resupdate = (2 * cdim > rdim);
         nmod_mat_poly_struct * expected = expect_resupdate ? app_upd : app_res;
         slong * sh_expected = expect_resupdate ? sh_upd : sh_res;
-        if (!mat_poly_equal(app_disp, expected))
+        if (!nmod_mat_poly_equal(app_disp, expected))
             res = 0;
         for (slong i = 0; i < rdim; i++)
             if (sh_disp[i] != sh_expected[i])

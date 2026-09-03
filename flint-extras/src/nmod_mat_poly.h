@@ -355,7 +355,7 @@ nmod_mat_poly_set_entry(nmod_mat_poly_t matp,
  * (missing coefficients  * on the shorter side are implicitly zero). */
 //@{
 
-NMOD_MAT_POLY_INLINE int mat_poly_equal(const nmod_mat_poly_t A, const nmod_mat_poly_t B)
+NMOD_MAT_POLY_INLINE int nmod_mat_poly_equal(const nmod_mat_poly_t A, const nmod_mat_poly_t B)
 {
     if (A->r != B->r || A->c != B->c)
         return 0;
