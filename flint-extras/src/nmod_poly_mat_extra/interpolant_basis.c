@@ -22,27 +22,25 @@ void nmod_poly_mat_mintbasis(nmod_poly_mat_t intbas,
                              const ulong * pts,
                              slong d)
 {
-    nmod_mat_poly_t Emp, intbasmp;
-    nmod_mat_poly_init(Emp, E->r, E->c, E->modulus);
-    /* Built directly, not via nmod_mat_poly_set_trunc_from_poly_mat: that
-       PML utility normalises its output, clearing (not just logically
-       dropping) any trailing coefficient matrices that happen to be zero.
-       Filling Emp ourselves via nmod_poly_mat_get_coeff_mat sidesteps
-       this entirely: it's built on nmod_poly_get_coeff_ui, which already
-       returns 0 for a degree beyond a polynomial's own length (no
-       precondition on d vs E's own degree), so all d slots stay properly
-       allocated and live -- Emp->length == d always, and d can be passed
-       straight through below. */
-    nmod_mat_poly_fit_length(Emp, d);
-    _nmod_mat_poly_set_length(Emp, d);
+    /** nmod_mat_poly_mintbasis takes E as a plain, flat array of `d`
+       already-initialized nmod_mat_t's (nmod_mat_struct *), just a 
+       container for `d`*/
+    nmod_mat_struct * Earr = (nmod_mat_struct *) flint_malloc(d * sizeof(nmod_mat_struct));
     for (slong k = 0; k < d; k++)
-        nmod_poly_mat_get_coeff_mat(Emp->coeffs + k, E, k);
+    {
+        nmod_mat_init(Earr + k, E->r, E->c, E->modulus);
+        nmod_poly_mat_get_coeff_mat(Earr + k, E, k);
+    }
+    nmod_mat_poly_t intbasmp;
     nmod_mat_poly_init(intbasmp, E->r, E->r, E->modulus);
-    nmod_mat_poly_mintbasis(intbasmp, shift, Emp, pts, d);
+    nmod_mat_poly_mintbasis(intbasmp, shift, Earr, E->c, pts, d);
     nmod_poly_mat_set_from_mat_poly(intbas, intbasmp);
-    nmod_mat_poly_clear(Emp);
+    for (slong k = 0; k < d; k++)
+        nmod_mat_clear(Earr + k);
+    flint_free(Earr);
     nmod_mat_poly_clear(intbasmp);
 }
+
 
 void nmod_poly_mat_pmintbasis(nmod_poly_mat_t intbas,
                               slong * shift,
