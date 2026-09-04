@@ -124,8 +124,7 @@ int nmod_poly_mat_is_approximant_basis(const nmod_poly_mat_t appbas,
  * - Membership: nmod_poly_mat_is_approximant_basis truncates the product
  *   appbas*pmat mod x^order and checks it is zero. Here, intbas is
  *   evaluated at each of the d points and multiplied by the corresponding
- *   evaluation E_k (E's own degree-k coefficient, per this header's
- *   "Conventions" -- not a truncation, a genuine pointwise product), and
+ *   evaluation E_k -- not a truncation, a genuine pointwise product), and
  *   each of the d products must be zero.
  *
  * - Generation (does intbas generate the whole interpolant module, not
@@ -159,20 +158,20 @@ int nmod_poly_mat_is_approximant_basis(const nmod_poly_mat_t appbas,
 /* TODO currently specialized to ROW_LOWER (or at least ROW_stuff), same
  * limitation as nmod_poly_mat_is_approximant_basis in this same file. */
 int nmod_poly_mat_is_interpolant_basis(const nmod_poly_mat_t intbas,
-                                       const nmod_poly_mat_t E,
                                        const ulong * pts,
+                                       const nmod_mat_struct * E,
                                        slong d,
                                        const slong * shift,
                                        orientation_t orient)
 {
-    const slong rdim = E->r;
-    const slong cdim = E->c;
-    const ulong prime = E->modulus;
+    const slong rdim = intbas->r;
+    const slong cdim = (d > 0) ? E[0].c : 0;
+    const ulong prime = intbas->modulus;
 
     int success = 1;
 
-    /* check intbas is square with the right dimension */
-    if (intbas->r != rdim || intbas->c != rdim)
+    /* check intbas is square */
+    if (intbas->r != intbas->c)
     {
         printf("basis has wrong row dimension or column dimension\n");
         success = 0;
@@ -186,19 +185,15 @@ int nmod_poly_mat_is_interpolant_basis(const nmod_poly_mat_t intbas,
     }
 
     /* check rows of intbas are interpolants: intbas(pts[k]) * E_k == 0
-     * for every one of the d points */
-    nmod_mat_t Ik, Ek, prod;
+     * for every one of the d points -- E_k is used directly (E + k) */
+    nmod_mat_t Ik, prod;
     nmod_mat_init(Ik, rdim, rdim, prime);
-    nmod_mat_init(Ek, rdim, cdim, prime);
     nmod_mat_init(prod, rdim, cdim, prime);
 
     for (slong k = 0; k < d; k++)
     {
         nmod_poly_mat_evaluate_nmod(Ik, intbas, pts[k]);
-        for (slong i = 0; i < rdim; i++)
-            for (slong j = 0; j < cdim; j++)
-                nmod_mat_entry(Ek, i, j) = nmod_poly_get_coeff_ui(nmod_poly_mat_entry(E, i, j), k);
-        nmod_mat_mul(prod, Ik, Ek);
+        nmod_mat_mul(prod, Ik, E + k);
         if (!nmod_mat_is_zero(prod))
         {
             printf("intbas(pts[%ld]) * E_%ld is not zero\n", (long) k, (long) k);
@@ -206,12 +201,16 @@ int nmod_poly_mat_is_interpolant_basis(const nmod_poly_mat_t intbas,
         }
     }
 
-    /** check generation, using nmod_poly_mat_det, must equal D,
-     * the sum of diagonal degrees of intbas. 
-     * A cheap cross-check between two different code paths,
-     * catching bugs in either nmod_poly_mat_is_ordered_weak_popov or this
-     * diagonal-degree summation, kept purely as defense-in-depth.
-     */
+    /** check generation, test 1 (self-consistency, mirrors PML's own
+     * nmod_poly_mat_is_approximant_basis verbatim): deg(det(intbas)),
+     * must equal D,
+     * the sum of diagonal degrees of intbas (valid since an ordered weak
+     * Popov basis has its row-i pivot exactly on the diagonal). Not a
+     * distinct minimality criterion on its own -- a cheap cross-check 
+     * between two different code paths, catching bugs in either 
+     * nmod_poly_mat_is_ordered_weak_popov or this
+     * diagonal-degree summation, kept purely as the same defense-in-depth
+     * PML's own verifier already pays for. */
     slong D = 0;
     for (slong i = 0; i < rdim; i++)
         D += nmod_poly_degree(nmod_poly_mat_entry(intbas, i, i));
@@ -226,16 +225,14 @@ int nmod_poly_mat_is_interpolant_basis(const nmod_poly_mat_t intbas,
     }
     nmod_poly_clear(det);
 
-    /** check generation, test 2 (the actual generation/minimality test:      
-     * D must equal sum_k rank(E_k). */
+    /* check generation, test 2 (the actual generation/minimality test, see
+     * this file's header comment for the full derivation): D must equal
+     * sum_k rank(E_k), the points-based analogue of PML's own [P(0) | C]
+     * Monte Carlo full-rank test -- here an exact, unconditional formula,
+     * not an approximation. E_k used directly (E + k). */
     slong target_D = 0;
     for (slong k = 0; k < d; k++)
-    {
-        for (slong i = 0; i < rdim; i++)
-            for (slong j = 0; j < cdim; j++)
-                nmod_mat_entry(Ek, i, j) = nmod_poly_get_coeff_ui(nmod_poly_mat_entry(E, i, j), k);
-        target_D += nmod_mat_rank(Ek);
-    }
+        target_D += nmod_mat_rank(E + k);
 
     if (D != target_D)
     {
@@ -244,7 +241,6 @@ int nmod_poly_mat_is_interpolant_basis(const nmod_poly_mat_t intbas,
     }
 
     nmod_mat_clear(Ik);
-    nmod_mat_clear(Ek);
     nmod_mat_clear(prod);
 
     return success;

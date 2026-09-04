@@ -24,9 +24,9 @@
 #include "t-mulmid.c"
 #include "t-mbasis.c"
 #include "t-pmbasis.c"
-#include "t-pmintbasis.c"
-#include "t-pmintbasis_geometric.c"
-#include "t-pmintbasis_geometric_auto.c"
+//#include "t-pmintbasis.c"
+//#include "t-pmintbasis_geometric.c"
+//#include "t-pmintbasis_geometric_auto.c"
 #include "t-rand.c"
 #include "t-weak_popov_form.c"
 

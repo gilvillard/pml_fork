@@ -27,7 +27,8 @@
    case. */
 static void _pmintbasis_geometric_rec(nmod_poly_mat_t intbas,
                                       slong * shift,
-                                      const nmod_poly_mat_t E,
+                                      const nmod_mat_struct * E,
+                                      slong n,
                                       ulong r,
                                       ulong rho_start,
                                       slong d,
@@ -35,6 +36,7 @@ static void _pmintbasis_geometric_rec(nmod_poly_mat_t intbas,
                                       const nmod_geometric_progression_t G)
 {
     ulong rho = nmod_mul(r, r, mod);
+    const slong m = intbas->r;
 
     if (d <= PMINTBASIS_THRES)
     {
@@ -45,26 +47,22 @@ static void _pmintbasis_geometric_rec(nmod_poly_mat_t intbas,
             pts[k] = cur;
             cur = nmod_mul(cur, rho, mod);
         }
-        nmod_poly_mat_mintbasis(intbas, shift, E, pts, d);
+        nmod_poly_mat_mintbasis(intbas, shift, pts, E, d);
         flint_free(pts);
         return;
     }
 
     const slong d1 = (d + 1) / 2;
     const slong d2 = d - d1;
-    const slong m = E->r;
-    const slong n = E->c;
 
-    nmod_poly_mat_t E1;
-    nmod_poly_mat_init(E1, E->r, E->c, E->modulus);
-    nmod_poly_mat_set_trunc(E1, E, d1);
-
+    /* No truncated copy of E needed for the first half -- E may be longer
+       than d1, extra entries simply unused (see interpolant_basis.c's own
+       comment on this same simplification for nmod_poly_mat_pmintbasis). */
     nmod_poly_mat_t P1;
-    nmod_poly_mat_init(P1, E->r, E->r, E->modulus);
-    _pmintbasis_geometric_rec(P1, shift, E1, r, rho_start, d1, mod, G);
-    nmod_poly_mat_clear(E1);
+    nmod_poly_mat_init(P1, m, m, intbas->modulus);
+    _pmintbasis_geometric_rec(P1, shift, E, n, r, rho_start, d1, mod, G);
 
-    /* R_i = P1(zeta*rho^i) * E_{d1+i}, i=0..d2-1, zeta = rho_start*rho^d1
+     /* R_i = P1(zeta*rho^i) * E_{d1+i}, i=0..d2-1, zeta = rho_start*rho^d1
        (the absolute start of the second half's points). Evaluating P1's
        entries at zeta*rho^i is done by rescaling each entry's coefficient
        k by zeta^k (Q(x) := entry(zeta*x)) and then evaluating the rescaled
@@ -109,35 +107,31 @@ static void _pmintbasis_geometric_rec(nmod_poly_mat_t intbas,
     flint_free(vs);
     flint_free(zeta_pow);
 
-    nmod_poly_mat_t R;
-    nmod_poly_mat_init(R, E->r, E->c, E->modulus);
-
-    nmod_mat_t evalP1, Ei, Ri;
-    nmod_mat_init(evalP1, m, m, E->modulus);
-    nmod_mat_init(Ei, m, n, E->modulus);
-    nmod_mat_init(Ri, m, n, E->modulus);
+    /* R, the "new E" for the second half's recursive call, is a plain
+       array too -- nmod_mat_mul writes each R_i directly, no intermediate
+       Ei/Ri extraction matrices or get/set_coeff_mat calls needed any
+       more (matches the same simplification in nmod_poly_mat_
+       pmintbasis). */
+    nmod_mat_struct * R = (nmod_mat_struct *) flint_malloc(FLINT_MAX(d2, 1) * sizeof(nmod_mat_struct));
+    nmod_mat_t evalP1;
+    nmod_mat_init(evalP1, m, m, intbas->modulus);
     for (slong idx = 0; idx < d2; idx++)
     {
         for (slong i = 0; i < m; i++)
             for (slong j = 0; j < m; j++)
                 nmod_mat_entry(evalP1, i, j) = P1vals[(i * m + j) * d2 + idx];
-        for (slong i = 0; i < m; i++)
-            for (slong j = 0; j < n; j++)
-                nmod_mat_entry(Ei, i, j) = nmod_poly_get_coeff_ui(nmod_poly_mat_entry(E, i, j), d1 + idx);
-        nmod_mat_mul(Ri, evalP1, Ei);
-        for (slong i = 0; i < m; i++)
-            for (slong j = 0; j < n; j++)
-                nmod_poly_set_coeff_ui(nmod_poly_mat_entry(R, i, j), idx, nmod_mat_entry(Ri, i, j));
+        nmod_mat_init(R + idx, m, n, intbas->modulus);
+        nmod_mat_mul(R + idx, evalP1, E + (d1 + idx));
     }
     nmod_mat_clear(evalP1);
-    nmod_mat_clear(Ei);
-    nmod_mat_clear(Ri);
     flint_free(P1vals);
 
     nmod_poly_mat_t P2;
-    nmod_poly_mat_init(P2, E->r, E->r, E->modulus);
-    _pmintbasis_geometric_rec(P2, shift, R, r, zeta, d2, mod, G);
-    nmod_poly_mat_clear(R);
+    nmod_poly_mat_init(P2, m, m, intbas->modulus);
+    _pmintbasis_geometric_rec(P2, shift, R, n, r, zeta, d2, mod, G);
+    for (slong idx = 0; idx < d2; idx++)
+        nmod_mat_clear(R + idx);
+    flint_free(R);
 
     nmod_poly_mat_multiply(intbas, P2, P1);
 
@@ -147,24 +141,28 @@ static void _pmintbasis_geometric_rec(nmod_poly_mat_t intbas,
 
 void nmod_poly_mat_pmintbasis_geometric(nmod_poly_mat_t intbas,
                                         slong * shift,
-                                        const nmod_poly_mat_t E,
+                                        ulong * pts,
+                                        const nmod_mat_struct * E,
                                         ulong r,
-                                        slong d,
-                                        ulong * pts)
+                                        slong d)
 {
+    /* d=0: no points, output is the identity, shift unchanged -- matching
+       the same convention as every other function in this project TO SEE. */
     if (d == 0)
     {
         nmod_poly_mat_one(intbas);
         return;
     }
 
+    const slong n = E[0].c;
+
     nmod_t mod;
-    nmod_init(&mod, E->modulus);
+    nmod_init(&mod, intbas->modulus);
 
     nmod_geometric_progression_t G;
     _nmod_geometric_progression_init_function(G, r, d, mod, 1); /* 1 = evaluation only */
 
-    _pmintbasis_geometric_rec(intbas, shift, E, r, 1, d, mod, G);
+    _pmintbasis_geometric_rec(intbas, shift, E, n, r, 1, d, mod, G);
 
     nmod_geometric_progression_clear(G);
 
@@ -180,7 +178,6 @@ void nmod_poly_mat_pmintbasis_geometric(nmod_poly_mat_t intbas,
     }
 }
 
-
 /**  Tries `nmod_find_root` (`nmod_extra.h`) first, rather than going
  * straight to `n_primitive_root_prime` 
  * (`ulong_extras.h`, used by this PR's own tests/benchmarks to pick `r`):
@@ -188,18 +185,18 @@ void nmod_poly_mat_pmintbasis_geometric(nmod_poly_mat_t intbas,
  * greater than `2*d`. */
 void nmod_poly_mat_pmintbasis_geometric_auto(nmod_poly_mat_t intbas,
                                              slong * shift,
-                                             const nmod_poly_mat_t E,
-                                             slong d,
-                                             ulong * pts)
+                                             ulong * pts,
+                                             const nmod_mat_struct * E,
+                                             slong d)
 {
     if (d == 0)
     {
-        nmod_poly_mat_pmintbasis_geometric(intbas, shift, E, 0, d, pts);
+        nmod_poly_mat_pmintbasis_geometric(intbas, shift, pts, E, 0, d);
         return;
     }
 
     nmod_t mod;
-    nmod_init(&mod, E->modulus);
+    nmod_init(&mod, intbas->modulus);
 
     ulong r = nmod_find_root(2 * d + 2, mod);
     if (r == 0)
@@ -210,6 +207,6 @@ void nmod_poly_mat_pmintbasis_geometric_auto(nmod_poly_mat_t intbas,
                     "No element of multiplicative order > 2*d found "
                     "(modulus too small for d = %wd points).\n", d);
 
-    nmod_poly_mat_pmintbasis_geometric(intbas, shift, E, r, d, pts);
+    nmod_poly_mat_pmintbasis_geometric(intbas, shift, pts, E, r, d);
 }
 

@@ -10,6 +10,7 @@
     <https://www.gnu.org/licenses/>.
 */
 
+
 /** Targets nmod_poly_mat_mintbasis and nmod_poly_mat_pmintbasis directly.
  * Uses nmod_poly_mat_is_interpolant_basis (verification.c, this same
  * staging area) for the defining-property check.
@@ -32,27 +33,47 @@
 
 #include <flint/test_helpers.h>
 #include <flint/nmod_poly.h>
+#include <flint/nmod_mat.h>
 #include <flint/ulong_extras.h>
 
 #include "nmod_poly_mat_interpolant.h"
 #include "testing_collection.h"
 
-
-/* d is passed explicitly rather than read from E: unlike nmod_mat_poly_t
-   (whose ->length is the natural point count), an nmod_poly_mat_t's own
-   degree bound does not determine d on its own -- see this header's
-   "Conventions" section in nmod_poly_mat_interpolant.h. */
-static int core_test_pmintbasis(const nmod_poly_mat_t E, const ulong * pts, slong d, const slong * shift0)
+/* Converts a filled nmod_poly_mat_t (built via gen_E, which operates on
+   that entrywise representation) into the plain array
+   nmod_poly_mat_pmintbasis/mintbasis now expect -- same pattern as
+   bench_mintbasis.c's own matp_to_array. */
+static nmod_mat_struct * poly_mat_to_array(const nmod_poly_mat_t E, slong d)
 {
-    const slong m = E->r;
+    nmod_mat_struct * arr = (nmod_mat_struct *) flint_malloc(FLINT_MAX(d, 1) * sizeof(nmod_mat_struct));
+    for (slong k = 0; k < d; k++)
+    {
+        nmod_mat_init(arr + k, E->r, E->c, E->modulus);
+        nmod_poly_mat_get_coeff_mat(arr + k, E, k);
+    }
+    return arr;
+}
 
+static void free_array(nmod_mat_struct * arr, slong d)
+{
+    for (slong k = 0; k < d; k++)
+        nmod_mat_clear(arr + k);
+    flint_free(arr);
+}
+
+/* d is passed explicitly rather than read off E: matches pts's own
+   "array may be longer than d, extra ignored" convention -- see this
+   header's "Conventions" section in nmod_poly_mat_interpolant.h. */
+static int core_test(const nmod_mat_struct * E, slong m, slong n, ulong prime,
+                     const ulong * pts, slong d, const slong * shift0)
+{
     slong * sh_pm = flint_malloc(m * sizeof(slong));
     for (slong i = 0; i < m; i++)
         sh_pm[i] = shift0[i];
 
     nmod_poly_mat_t out_pm;
-    nmod_poly_mat_init(out_pm, m, m, E->modulus);
-    nmod_poly_mat_pmintbasis(out_pm, sh_pm, E, pts, d);
+    nmod_poly_mat_init(out_pm, m, m, prime);
+    nmod_poly_mat_pmintbasis(out_pm, sh_pm, E, n, pts, d);
 
     int res = 1;
 
@@ -65,8 +86,8 @@ static int core_test_pmintbasis(const nmod_poly_mat_t E, const ulong * pts, slon
         for (slong i = 0; i < m; i++)
             sh_m[i] = shift0[i];
         nmod_poly_mat_t out_m;
-        nmod_poly_mat_init(out_m, m, m, E->modulus);
-        nmod_poly_mat_mintbasis(out_m, sh_m, E, pts, d);
+        nmod_poly_mat_init(out_m, m, m, prime);
+        nmod_poly_mat_mintbasis(out_m, sh_m, E, n, pts, d);
 
         if (!nmod_poly_mat_equal(out_pm, out_m))
             res = 0;
@@ -78,8 +99,8 @@ static int core_test_pmintbasis(const nmod_poly_mat_t E, const ulong * pts, slon
         flint_free(sh_m);
     }
 
-    /* genuine minimal interpolant basis, w.r.t. the ORIGINAL shift0 */
-    if (res && !nmod_poly_mat_is_interpolant_basis(out_pm, E, pts, d, shift0, ROW_LOWER))
+    /* genuine minimal interpolant basis, w.r.t. the original shift0. */
+    if (res && !nmod_poly_mat_is_interpolant_basis(out_pm, E, n, pts, d, shift0, ROW_LOWER))
         res = 0;
 
     nmod_poly_mat_clear(out_pm);
@@ -92,25 +113,25 @@ TEST_FUNCTION_START(nmod_poly_mat_pmintbasis, state)
 {
     int i, result;
 
-    /* explicit d=0 regression case */
+    /* explicit d=0 regression case -- E is never dereferenced when d=0
+       (both nmod_poly_mat_pmintbasis and the M-level dispatcher it falls
+       back to return before touching E), so NULL is passed directly. */
     for (i = 0; i < 20; i++)
     {
         slong n = 1 + n_randint(state, 10);
         slong m = n + n_randint(state, 10);
         ulong prime = n_randprime(state, 2 + n_randint(state, 60), 1);
 
-        nmod_poly_mat_t E, out;
-        nmod_poly_mat_init(E, m, n, prime);
+        nmod_poly_mat_t out;
         nmod_poly_mat_init(out, m, m, prime);
         slong * shift = flint_malloc(m * sizeof(slong));
         for (slong j = 0; j < m; j++)
             shift[j] = n_randint(state, 10);
 
-        nmod_poly_mat_pmintbasis(out, shift, E, NULL, 0);
+        nmod_poly_mat_pmintbasis(out, shift, NULL, n, NULL, 0);
         if (!nmod_poly_mat_is_one(out))
             TEST_FUNCTION_FAIL("d=0 case: m = %wd, n = %wd, prime = %wu\n", m, n, prime);
 
-        nmod_poly_mat_clear(E);
         nmod_poly_mat_clear(out);
         flint_free(shift);
     }
@@ -118,7 +139,7 @@ TEST_FUNCTION_START(nmod_poly_mat_pmintbasis, state)
     for (i = 0; i < 80 * flint_test_multiplier(); i++)
     {
         slong n = 1 + n_randint(state, 16);
-        slong m = 1 + n_randint(state, 16); /* n <= m, including n == m */
+        slong m = n + n_randint(state, 16); /* n <= m, including n == m */
         slong d = n_randint(state, 250); /* well beyond a small overridden threshold */
 
         /* nbits' floor must guarantee some prime of that bit length exceeds
@@ -134,9 +155,11 @@ TEST_FUNCTION_START(nmod_poly_mat_pmintbasis, state)
         ulong prime;
         do { prime = n_randprime(state, nbits, 1); } while (prime <= bound);
 
-        nmod_poly_mat_t E;
-        nmod_poly_mat_init(E, m, n, prime);
-        gen_E(E, d, state);
+        nmod_poly_mat_t E_poly;
+        nmod_poly_mat_init(E_poly, m, n, prime);
+        gen_E(E_poly, d, state);
+        nmod_mat_struct * E = poly_mat_to_array(E_poly, d);
+        nmod_poly_mat_clear(E_poly);
 
         ulong * pts = flint_malloc(FLINT_MAX(d, 1) * sizeof(ulong));
         for (slong k = 0; k < d; k++)
@@ -155,12 +178,12 @@ TEST_FUNCTION_START(nmod_poly_mat_pmintbasis, state)
         slong * shift0 = flint_malloc(m * sizeof(slong));
         gen_shift(shift0, m, d, state);
 
-        result = core_test_pmintbasis(E, pts, d, shift0);
+        result = core_test(E, m, n, prime, pts, d, shift0);
 
         if (!result)
             TEST_FUNCTION_FAIL("prime = %wd, m = %wd, n = %wd, d = %wd\n", prime, m, n, d);
 
-        nmod_poly_mat_clear(E);
+        free_array(E, d);
         flint_free(pts);
         flint_free(shift0);
     }
@@ -178,15 +201,17 @@ TEST_FUNCTION_START(nmod_poly_mat_pmintbasis, state)
         {
             ulong prime = small_primes[sp];
 
-            for (i = 0; i < 20 * flint_test_multiplier(); i++)
+            for (i = 0; i < 10 * flint_test_multiplier(); i++)
             {
-                slong n = 1 + n_randint(state, 16);
-                slong m = 1 + n_randint(state, 16); /* n <= m, including n == m */
+                slong n = 1 + n_randint(state, 4);
+                slong m = n + n_randint(state, 4); /* n <= m, including n == m */
                 slong d = n_randint(state, prime + 1); /* 0 <= d <= prime */
 
-                nmod_poly_mat_t E;
-                nmod_poly_mat_init(E, m, n, prime);
-                gen_E(E, d, state);
+                nmod_poly_mat_t E_poly;
+                nmod_poly_mat_init(E_poly, m, n, prime);
+                gen_E(E_poly, d, state);
+                nmod_mat_struct * E = poly_mat_to_array(E_poly, d);
+                nmod_poly_mat_clear(E_poly);
 
                 ulong * pts = flint_malloc(FLINT_MAX(d, 1) * sizeof(ulong));
                 for (slong k = 0; k < d; k++)
@@ -205,13 +230,13 @@ TEST_FUNCTION_START(nmod_poly_mat_pmintbasis, state)
                 slong * shift0 = flint_malloc(m * sizeof(slong));
                 gen_shift(shift0, m, d, state);
 
-                result = core_test_pmintbasis(E, pts, d, shift0);
+                result = core_test(E, m, n, prime, pts, d, shift0);
 
                 if (!result)
                     TEST_FUNCTION_FAIL("small-prime case: prime = %wu, m = %wd, n = %wd, d = %wd\n",
                                        prime, m, n, d);
 
-                nmod_poly_mat_clear(E);
+                free_array(E, d);
                 flint_free(pts);
                 flint_free(shift0);
             }

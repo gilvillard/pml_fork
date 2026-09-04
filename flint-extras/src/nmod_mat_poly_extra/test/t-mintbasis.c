@@ -94,8 +94,8 @@ static int check_d0(slong m, slong n, ulong prime, flint_rand_t state)
     for (slong i = 0; i < m; i++)
         sh_res[i] = sh_upd[i] = n_randint(state, 10);
 
-    nmod_mat_poly_mintbasis_rescomp(i_res, sh_res, E, n, NULL, 0);
-    nmod_mat_poly_mintbasis_resupdate(i_upd, sh_upd, E, n, NULL, 0);
+    nmod_mat_poly_mintbasis_rescomp(i_res, sh_res, NULL, E, 0);
+    nmod_mat_poly_mintbasis_resupdate(i_upd, sh_upd, NULL, E, 0);
 
     int ok = nmod_mat_poly_is_one(i_res) && nmod_mat_poly_is_one(i_upd);
 
@@ -125,9 +125,9 @@ static int core_test(const nmod_mat_struct * E, slong m, slong n, ulong prime,
     nmod_mat_poly_init(out_upd, m, m, prime);
     nmod_mat_poly_init(out_disp, m, m, prime);
 
-    nmod_mat_poly_mintbasis_rescomp(out_res, sh_res, E, n, pts, d);
-    nmod_mat_poly_mintbasis_resupdate(out_upd, sh_upd, E, n, pts, d);
-    nmod_mat_poly_mintbasis(out_disp, sh_disp, E, n, pts, d);
+    nmod_mat_poly_mintbasis_rescomp(out_res, sh_res, pts, E, d);
+    nmod_mat_poly_mintbasis_resupdate(out_upd, sh_upd, pts, E, d);
+    nmod_mat_poly_mintbasis(out_disp, sh_disp, pts, E, d);
 
     int res = 1;
 
@@ -165,17 +165,12 @@ static int core_test(const nmod_mat_struct * E, slong m, slong n, ulong prime,
        nmod_poly_mat_mintbasis itself uses to wrap this dispatcher */
     if (res)
     {
-        nmod_poly_mat_t E_pm, out_disp_pm;
-        nmod_poly_mat_init(E_pm, m, n, prime);
-        for (slong k = 0; k < d; k++)
-            nmod_poly_mat_set_coeff_mat(E_pm, E + k, k);
+        nmod_poly_mat_t out_disp_pm;
         nmod_poly_mat_init(out_disp_pm, m, m, prime);
         nmod_poly_mat_set_from_mat_poly(out_disp_pm, out_disp);
 
-        if (!nmod_poly_mat_is_interpolant_basis(out_disp_pm, E_pm, pts, d, shift0, ROW_LOWER))
+        if (!nmod_poly_mat_is_interpolant_basis(out_disp_pm, pts, E, d, shift0, ROW_LOWER))
             res = 0;
-
-        nmod_poly_mat_clear(E_pm);
         nmod_poly_mat_clear(out_disp_pm);
     }
 

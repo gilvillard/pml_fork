@@ -785,9 +785,8 @@ void nmod_mat_poly_mbasis(nmod_mat_poly_t appbas,
  * residual-maintenance overhead. */
 void nmod_mat_poly_mintbasis_rescomp(nmod_mat_poly_t intbas,
                                      slong * shift,
-                                     const nmod_mat_struct * E,
-                                     slong n,
                                      const ulong * pts,
+                                     const nmod_mat_struct * E,
                                      slong d);
 
 /** Variant of `mintbasis` (see @ref mintbasis) where we store the vector
@@ -816,9 +815,8 @@ void nmod_mat_poly_mintbasis_rescomp(nmod_mat_poly_t intbas,
  * the residual bookkeeping differs. */
 void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
                                        slong * shift,
-                                       const nmod_mat_struct * E,
-                                       slong n,
                                        const ulong * pts,
+                                       const nmod_mat_struct * E,
                                        slong d);
 
 /** Main `mintbasis` function: chooses between
@@ -833,9 +831,8 @@ void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
  */
 void nmod_mat_poly_mintbasis(nmod_mat_poly_t intbas,
                              slong * shift,
-                             const nmod_mat_struct * E,
-                             slong n,
                              const ulong * pts,
+                             const nmod_mat_struct * E,
                              slong d);
 
 //@} // doxygen group: M-IntBasis algorithm (uniform number of interpolation points)

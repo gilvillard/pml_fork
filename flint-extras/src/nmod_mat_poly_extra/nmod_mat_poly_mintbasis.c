@@ -86,9 +86,8 @@ static void _mintbasis_low_rank_addmul(nmod_mat_t bottom, const nmod_mat_t nsbas
  * dispatcher between them. */
 void nmod_mat_poly_mintbasis_rescomp(nmod_mat_poly_t intbas,
                                      slong * shift,
-                                     const nmod_mat_struct * E,
-                                     slong n,
                                      const ulong * pts,
+                                     const nmod_mat_struct * E,
                                      slong d)
 {
     const slong m = intbas->r;
@@ -97,6 +96,8 @@ void nmod_mat_poly_mintbasis_rescomp(nmod_mat_poly_t intbas,
 
     if (d == 0)
         return;
+
+    const slong n = E[0].c;
 
     nmod_mat_t evalP;
     nmod_mat_t res;
@@ -267,9 +268,8 @@ void nmod_mat_poly_mintbasis_rescomp(nmod_mat_poly_t intbas,
  * led to. */
 void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
                                        slong * shift,
-                                       const nmod_mat_struct * E,
-                                       slong n,
                                        const ulong * pts,
+                                       const nmod_mat_struct * E,
                                        slong d)
 {
     const slong m = intbas->r;
@@ -278,6 +278,10 @@ void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
 
     if (d == 0)
         return;
+
+    /* n dropped as a parameter -- see nmod_mat_poly_mintbasis_rescomp's
+       own comment above for the rationale (identical here). */
+    const slong n = E[0].c;
 
     /* Res[k] = intbas(pts[k])*E_k; initially intbas=Id so Res[k] = E_k. */
     nmod_mat_struct * Res = (nmod_mat_struct *) flint_malloc(d * sizeof(nmod_mat_struct));
@@ -439,17 +443,28 @@ void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
  * \todo investigate for a better dispatcher.  */
 void nmod_mat_poly_mintbasis(nmod_mat_poly_t intbas,
                              slong * shift,
-                             const nmod_mat_struct * E,
-                             slong n,
                              const ulong * pts,
+                             const nmod_mat_struct * E,
                              slong d)
 {
+    /* d=0: both variants return the identity with no other side effect
+       (checked first thing in each, before n would be read off E), so
+       there is nothing to dispatch on and E is never dereferenced --
+       matches the established "E is never dereferenced when d=0"
+       convention (see e.g. interpolant_basis_geometric_auto.c). */
+    if (d == 0)
+    {
+        nmod_mat_poly_one(intbas);
+        return;
+    }
+
     const slong m = intbas->r;
+    const slong n = E[0].c;
 
     if (d * (m - n + 1) <= m)
-        nmod_mat_poly_mintbasis_resupdate(intbas, shift, E, n, pts, d);
+        nmod_mat_poly_mintbasis_resupdate(intbas, shift, pts, E, d);
     else
-        nmod_mat_poly_mintbasis_rescomp(intbas, shift, E, n, pts, d);
+        nmod_mat_poly_mintbasis_rescomp(intbas, shift, pts, E, d);
 }
 
 

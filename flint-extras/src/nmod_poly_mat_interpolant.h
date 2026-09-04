@@ -62,14 +62,13 @@
  * Most functions below use the following parameters.
  *
  * \param[out] intbas the output interpolant basis (cannot alias `E`)
- * \param[in] E the input matrix, representing `d` constant matrices (the
- *   coefficients of `E` at the points `pts`, not in the monomial basis).
- *  `E` is a plain, flat array of `nmod_mat_struct` (`nmod_mat_struct *`),
- *  a container for a  * sequence of `d` constant matrices,  its length is at least d.
- * 
+ * \param[in] `E` is a plain, flat array of `nmod_mat_struct` (`nmod_mat_struct *`),
+ *  a container for a sequence of constant matrices, (the
+ *   coefficients of `E` at the points `pts`, not in the monomial basis), 
+ *  its length is at least d.
  * \param[in] pts the `d` pairwise distinct interpolation points.
- * \param[in] `d` is a separate parameter such that `d <= (actual length of pts)`
- *  and `d <= (actual length of E)`.
+ * \param[in] `d` is a separate parameter SUCH THAT 
+ *    `d <= (actual length of pts)`  and `d <= (actual length of E)`.
  * \param[in,out] shift in: the input shift; and out: the output shifted row
  *   degree of `intbas` (list of integers, length must be the number of
  *   rows of `E`).
@@ -124,11 +123,11 @@ extern "C" {
  * were adapted to points. 
  *
  * \param[in] intbas interpolant basis
- * \param[in] E the input matrix, representing `d` constant matrices (see this
+ * \param[in] E the input sequence, representing `d` constant matrices (see this
  *   header's own "Conventions" section)
  * \param[in] pts the `d` pairwise distinct interpolation points
  * \param[in] d number of points to actually consider, such that 
- *   `d <= (actual length of pts)`.
+ *   `d <= (actual length of pts)` and `d <= (actual length of E)`.
  * \param[in] shift shift
  * \param[in] orient indicates the orientation (left/right interpolants)
  *   and the definition of pivots
@@ -136,8 +135,8 @@ extern "C" {
  * \return boolean, result of the verification
  */
 int nmod_poly_mat_is_interpolant_basis(const nmod_poly_mat_t intbas,
-                                       const nmod_poly_mat_t E,
                                        const ulong * pts,
+                                       const nmod_mat_struct * E,
                                        slong d,
                                        const slong * shift,
                                        orientation_t orient);
@@ -157,15 +156,12 @@ int nmod_poly_mat_is_interpolant_basis(const nmod_poly_mat_t intbas,
 //@{
 
 /** Computes a `shift`-ordered weak Popov interpolant basis for
- * `(E,pts)`, `E` given as an `nmod_poly_mat_t` with `E_k` stored as the
- * coefficient of degree `k` (a convenient encoding of the `d`-tuple of
- * constant matrices, `d` = length of `pts`; see this header's own
- * "Conventions" section), relying on the M-IntBasis approach (see @ref
- * nmod_mat_poly_mintbasis, `nmod_mat_poly.h`). */
+ * `(E,pts)`, `E` given as a flat array of `nmod_mat_struct`, 
+ *  with `E_k` stored as the coefficient of degree `k` */
 void nmod_poly_mat_mintbasis(nmod_poly_mat_t intbas,
                              slong * shift,
-                             const nmod_poly_mat_t E,
                              const ulong * pts,
+                             const nmod_mat_struct * E,
                              slong d);
 
 //@} // doxygen group: M-IntBasis algorithm (uniform number of interpolation points)
@@ -197,8 +193,8 @@ void nmod_poly_mat_mintbasis(nmod_poly_mat_t intbas,
  * @ref nmod_poly_mat_mintbasis once `d <= PMINTBASIS_THRES`. */
 void nmod_poly_mat_pmintbasis(nmod_poly_mat_t intbas,
                               slong * shift,
-                              const nmod_poly_mat_t E,
                               const ulong * pts,
+                              const nmod_mat_struct * E,
                               slong d);
 
 //@} // doxygen group: PM-IntBasis algorithm (uniform number of interpolation points)
@@ -235,10 +231,10 @@ void nmod_poly_mat_pmintbasis(nmod_poly_mat_t intbas,
  * instance. */
 void nmod_poly_mat_pmintbasis_geometric(nmod_poly_mat_t intbas,
                                         slong * shift,
-                                        const nmod_poly_mat_t E,
+                                        ulong * pts,
+                                        const nmod_mat_struct * E,
                                         ulong r,
-                                        slong d,
-                                        ulong * pts);
+                                        slong d);
 
 
 /** Tries `nmod_find_root` (`nmod_extra.h`) first, rather than going
@@ -269,13 +265,11 @@ void nmod_poly_mat_pmintbasis_geometric(nmod_poly_mat_t intbas,
  * nmod_poly_mat_pmintbasis_geometric's own `d == 0` guard, which returns
  * before `r` is ever used), so this never throws when `d = 0`, regardless
  * of how small the modulus is. */
-
-
 void nmod_poly_mat_pmintbasis_geometric_auto(nmod_poly_mat_t intbas,
                                              slong * shift,
-                                             const nmod_poly_mat_t E,
-                                             slong d,
-                                             ulong * pts);
+                                             ulong * pts,
+                                             const nmod_mat_struct * E,
+                                             slong d);
 
 //@} // doxygen group: PM-IntBasis algorithm, geometric points
 
