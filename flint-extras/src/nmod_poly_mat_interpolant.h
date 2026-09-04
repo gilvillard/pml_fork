@@ -64,15 +64,26 @@
  * \param[out] intbas the output interpolant basis (cannot alias `E`)
  * \param[in] E the input matrix, representing `d` constant matrices (the
  *   coefficients of `E` at the points `pts`, not in the monomial basis).
- *  `E` is a plain, flat array of `nmod_mat_struct` (`nmod_mat_struct *`),
- *  a container for a  * sequence of `d` constant matrices,  its length is at least d.
- * 
+ *  At the M-level, `E` is an `nmod_mat_poly_t`, at the PM-level 
+ *   `E` is an `nmod_poly_mat_t`, 
+ *  storing `E_k` as the coefficient of degree `k` (this is a convenient, 
+ *   valid encoding of the same `d`-tuple of constant matrices (not a claim 
+ *   that `E` itself has any interpolation meaning as a polynomial matrix). 
+ *  `E_k` is zero when `k >= E->length`or when `k` is greater than the degree 
+ *   of E. 
  * \param[in] pts the `d` pairwise distinct interpolation points.
- * \param[in] `d` is a separate parameter such that `d <= (actual length of pts)`
- *  and `d <= (actual length of E)`.
+ * \param[in] `d` is a separate parameter such that `d <= (actual length of pts)`.
  * \param[in,out] shift in: the input shift; and out: the output shifted row
  *   degree of `intbas` (list of integers, length must be the number of
  *   rows of `E`).
+ * 
+ * Nota.
+ * -----
+ *  `E` is `nmod_mat_poly_t` at the M-level (`nmod_mat_poly_mintbasis*`) 
+ *  and `nmod_poly_mat_t` at the PM level (`nmod_poly_mat_pmintbasis*`, 
+ *  `nmod_poly_mat_is_interpolant_basis`). The PM-level choice mirrors PML's 
+ *  own `approximant_basis.c` interface (`pmat` as `nmod_poly_mat_t`), for signature 
+ *  parity with the approximant functions and to ensure consistency in the inputs.
  * 
  * Sources.
  * --------

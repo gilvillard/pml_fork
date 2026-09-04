@@ -674,6 +674,7 @@ void nmod_mat_poly_mbasis_rescomp(nmod_mat_poly_t appbas,
  * @ref nmod_mat_poly_mbasis_rescomp on identical input: both variants apply
  * the same row operations and the same nullspace pivot choice, only the
  * residual bookkeeping differs. */
+
 void nmod_mat_poly_mbasis_resupdate(nmod_mat_poly_t appbas,
                                     slong * shift,
                                     const nmod_mat_poly_t matp,
@@ -715,6 +716,7 @@ void nmod_mat_poly_mbasis_resupdate(nmod_mat_poly_t appbas,
  * (`cdim > rdim/2` selects resupdate, since that is where its asymptotic
  * `n/(m-n)` advantage becomes worthwhile. 
  */
+
 void nmod_mat_poly_mbasis(nmod_mat_poly_t appbas,
                           slong * shift,
                           const nmod_mat_poly_t matp,
@@ -735,16 +737,10 @@ void nmod_mat_poly_mbasis(nmod_mat_poly_t appbas,
  * iterative construction, with "coefficient of `P*F`" (order truncation)
  * replaced by "evaluation `P(pts_k)*E_k`" (interpolation).
  *
- * The length of pts is at least d.
- * 
- * `E` is a plain, flat array of `nmod_mat_struct` (`nmod_mat_struct *`),
- *  a container for a  * sequence of `d` constant matrices,
- *  its length is at least d.
- * 
- * * * `d`, the number of points to use, is a separate explicit parameter
- * rather than being read off from pts or E, 
- * d <= (actual length of pts)
- * d <= (actual length of E)
+ * * `d`, the number of points to use, is a separate explicit parameter
+ * rather than being read off `E->length`. `E_k`
+ * for `k >= E->length` is treated as the zero matrix, the same convention
+ * a polynomial's own coefficients follow past its length  
  * 
  * At the end of the computation, the vector `shift` contains the shifted
  * row degree of `intbas`, for the input shift.
@@ -769,7 +765,7 @@ void nmod_mat_poly_mbasis(nmod_mat_poly_t appbas,
  * `intbas(pts[k])*E_k` is recomputed from scratch, via a full Horner
  * evaluation of `intbas` at `pts[k]`, at every iteration.
  *
- * Complexity: `E` is `d` points `m x n`, 
+ * Complexity: `E` is `m x n`, `d` points.
  *   - `d` calls to constant nullspace with dimension `m x n`, each one
  *     gives a constant matrix `K` which is generically `(m-n) x m` (may
  *     have more rows in exceptional cases);
@@ -785,8 +781,7 @@ void nmod_mat_poly_mbasis(nmod_mat_poly_t appbas,
  * residual-maintenance overhead. */
 void nmod_mat_poly_mintbasis_rescomp(nmod_mat_poly_t intbas,
                                      slong * shift,
-                                     const nmod_mat_struct * E,
-                                     slong n,
+                                     const nmod_mat_poly_t E,
                                      const ulong * pts,
                                      slong d);
 
@@ -816,8 +811,7 @@ void nmod_mat_poly_mintbasis_rescomp(nmod_mat_poly_t intbas,
  * the residual bookkeeping differs. */
 void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
                                        slong * shift,
-                                       const nmod_mat_struct * E,
-                                       slong n,
+                                       const nmod_mat_poly_t E,
                                        const ulong * pts,
                                        slong d);
 
@@ -833,8 +827,7 @@ void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
  */
 void nmod_mat_poly_mintbasis(nmod_mat_poly_t intbas,
                              slong * shift,
-                             const nmod_mat_struct * E,
-                             slong n,
+                             const nmod_mat_poly_t E,
                              const ulong * pts,
                              slong d);
 

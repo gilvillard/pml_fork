@@ -49,43 +49,15 @@
 #include "nmod_poly_mat_utils.h"
 
 
-
-#include <flint/test_helpers.h>
-
-#include "nmod_mat_poly.h"
-#include "nmod_poly_mat_interpolant.h"
-#include "nmod_poly_mat_utils.h"
-
-/* Builds a plain array of `elen` random m x n matrices mod `prime` */
-static nmod_mat_struct * build_random_E(slong m, slong n, ulong prime, slong elen, flint_rand_t state)
-{
-    nmod_mat_struct * E = (nmod_mat_struct *) flint_malloc(FLINT_MAX(elen, 1) * sizeof(nmod_mat_struct));
-    for (slong k = 0; k < elen; k++)
-    {
-        nmod_mat_init(E + k, m, n, prime);
-        nmod_mat_randtest(E + k, state);
-    }
-    return E;
-}
-
-static void free_E(nmod_mat_struct * E, slong elen)
-{
-    for (slong k = 0; k < elen; k++)
-        nmod_mat_clear(E + k);
-    flint_free(E);
-}
-
 static int check_d0(slong m, slong n, ulong prime, flint_rand_t state)
 {
-    /* d is a separate explicit parameter, so d=0 is tested directly
-       against a non-trivial, randomly-filled E that is longer than d --
-       exercising "E longer than d, extra unused" (the now-plain-array
-       convention, mirroring pts's own d <= length(pts)), not just the
-       trivial d=0/E-empty case. TO SEE */
-    slong elen = 1 + n_randint(state, 5);
-    nmod_mat_struct * E = build_random_E(m, n, prime, elen, state);
-
-    nmod_mat_poly_t i_res, i_upd;
+    nmod_mat_poly_t E, i_res, i_upd;
+    /* d is a separate explicit parameter, so d=0 is tested
+       directly against a non-trivial, randomly-filled E of positive
+       length -- unlike before this parameter existed, when testing d=0
+       required E itself to have length 0. This also exercises d < E->
+       length in general, not just the d=0 boundary. */
+    nmod_mat_poly_init(E, m, n, prime);
     nmod_mat_poly_init(i_res, m, m, prime);
     nmod_mat_poly_init(i_upd, m, m, prime);
 
@@ -94,12 +66,12 @@ static int check_d0(slong m, slong n, ulong prime, flint_rand_t state)
     for (slong i = 0; i < m; i++)
         sh_res[i] = sh_upd[i] = n_randint(state, 10);
 
-    nmod_mat_poly_mintbasis_rescomp(i_res, sh_res, E, n, NULL, 0);
-    nmod_mat_poly_mintbasis_resupdate(i_upd, sh_upd, E, n, NULL, 0);
+    nmod_mat_poly_mintbasis_rescomp(i_res, sh_res, E, NULL, 0);
+    nmod_mat_poly_mintbasis_resupdate(i_upd, sh_upd, E, NULL, 0);
 
     int ok = nmod_mat_poly_is_one(i_res) && nmod_mat_poly_is_one(i_upd);
 
-    free_E(E, elen);
+    nmod_mat_poly_clear(E);
     nmod_mat_poly_clear(i_res);
     nmod_mat_poly_clear(i_upd);
     flint_free(sh_res);
@@ -107,13 +79,12 @@ static int check_d0(slong m, slong n, ulong prime, flint_rand_t state)
     return ok;
 }
 
-/* returns 1 if the trial passed all checks, 0 otherwise. `elen` (E's own
-   allocated length, >= d) is not needed here: every consumer only ever
-   reads E[0..d-1], matching pts's own "array may be longer than d, extra
-   ignored" convention -- see build_random_E's own doc comment. */
-static int core_test(const nmod_mat_struct * E, slong m, slong n, ulong prime,
-                     const ulong * pts, slong d, const slong * shift0)
+/* returns 1 if the trial passed all checks, 0 otherwise */
+static int core_test_mintbasis(nmod_mat_poly_t E, const ulong * pts, slong d, const slong * shift0)
 {
+    const slong m = E->r;
+    const slong n = E->c;
+
     slong * sh_res = flint_malloc(m * sizeof(slong));
     slong * sh_upd = flint_malloc(m * sizeof(slong));
     slong * sh_disp = flint_malloc(m * sizeof(slong));
@@ -121,13 +92,13 @@ static int core_test(const nmod_mat_struct * E, slong m, slong n, ulong prime,
         sh_res[i] = sh_upd[i] = sh_disp[i] = shift0[i];
 
     nmod_mat_poly_t out_res, out_upd, out_disp;
-    nmod_mat_poly_init(out_res, m, m, prime);
-    nmod_mat_poly_init(out_upd, m, m, prime);
-    nmod_mat_poly_init(out_disp, m, m, prime);
+    nmod_mat_poly_init(out_res, m, m, E->mod.n);
+    nmod_mat_poly_init(out_upd, m, m, E->mod.n);
+    nmod_mat_poly_init(out_disp, m, m, E->mod.n);
 
-    nmod_mat_poly_mintbasis_rescomp(out_res, sh_res, E, n, pts, d);
-    nmod_mat_poly_mintbasis_resupdate(out_upd, sh_upd, E, n, pts, d);
-    nmod_mat_poly_mintbasis(out_disp, sh_disp, E, n, pts, d);
+    nmod_mat_poly_mintbasis_rescomp(out_res, sh_res, E, pts, d);
+    nmod_mat_poly_mintbasis_resupdate(out_upd, sh_upd, E, pts, d);
+    nmod_mat_poly_mintbasis(out_disp, sh_disp, E, pts, d);
 
     int res = 1;
 
@@ -141,6 +112,7 @@ static int core_test(const nmod_mat_struct * E, slong m, slong n, ulong prime,
     /* (2) dispatcher matches whichever variant it should have picked */
     if (res)
     {
+
         if (!nmod_mat_poly_equal(out_disp, out_upd))
             res = 0;
         for (slong i = 0; i < m; i++)
@@ -157,19 +129,15 @@ static int core_test(const nmod_mat_struct * E, slong m, slong n, ulong prime,
         //         res = 0;
     }
 
-    /* (3) genuine minimal interpolant basis, w.r.t. the originalshift0 --
-       build the nmod_poly_mat_t E used by the verifier directly from the
-       first d entries of the plain array (nmod_poly_mat_set_coeff_mat,
-       the same primitive interpolant_basis.c itself uses in the other
-       direction), and convert out_disp to nmod_poly_mat_t the same way
-       nmod_poly_mat_mintbasis itself uses to wrap this dispatcher */
+    /* (3) genuine minimal interpolant basis, w.r.t. the original shift0 --
+       convert to nmod_poly_mat_t first, the same conversion nmod_poly_mat_
+       mintbasis itself uses to wrap this dispatcher */
     if (res)
     {
         nmod_poly_mat_t E_pm, out_disp_pm;
-        nmod_poly_mat_init(E_pm, m, n, prime);
-        for (slong k = 0; k < d; k++)
-            nmod_poly_mat_set_coeff_mat(E_pm, E + k, k);
-        nmod_poly_mat_init(out_disp_pm, m, m, prime);
+        nmod_poly_mat_init(E_pm, m, n, E->mod.n);
+        nmod_poly_mat_set_from_mat_poly(E_pm, E);
+        nmod_poly_mat_init(out_disp_pm, m, m, E->mod.n);
         nmod_poly_mat_set_from_mat_poly(out_disp_pm, out_disp);
 
         if (!nmod_poly_mat_is_interpolant_basis(out_disp_pm, E_pm, pts, d, shift0, ROW_LOWER))
@@ -190,7 +158,6 @@ static int core_test(const nmod_mat_struct * E, slong m, slong n, ulong prime,
 }
 
 
-
 TEST_FUNCTION_START(nmod_mat_poly_mintbasis, state)
 {
     int i, result;
@@ -206,7 +173,7 @@ TEST_FUNCTION_START(nmod_mat_poly_mintbasis, state)
             TEST_FUNCTION_FAIL("d=0 case: m = %wd, n = %wd, prime = %wu\n", m, n, prime);
     }
 
-    for (i = 0; i < 100 * flint_test_multiplier(); i++)
+    for (i = 0; i < 200 * flint_test_multiplier(); i++)
     {
         slong n = 1 + n_randint(state, 10);
         slong m = 1 + n_randint(state, 10); /* n <= m, including n == m */
@@ -224,16 +191,9 @@ TEST_FUNCTION_START(nmod_mat_poly_mintbasis, state)
         ulong prime;
         do { prime = n_randprime(state, nbits, 1); } while (prime <= bound);
 
-        /* E's own allocated length is drawn independently of, and at least
-           as large as, d -- exercising "E longer than d, extra unused"
-           (the plain array's own convention, mirroring pts's own
-           d <= length(pts)) -- not just elen == d. Unlike the old
-           nmod_mat_poly_t-based version of this file, no clamp is needed
-           here any more: build_random_E's array length is exactly what is
-           allocated, never silently shrunk the way nmod_mat_poly_t's own
-           normalisation could (see build_random_E's own doc comment). */
-        slong elen = d + n_randint(state, 10);
-        nmod_mat_struct * E = build_random_E(m, n, prime, elen, state);
+        nmod_mat_poly_t E;
+        nmod_mat_poly_init(E, m, n, prime);
+        nmod_mat_poly_rand(E, state, d);
 
         ulong * pts = flint_malloc(FLINT_MAX(d, 1) * sizeof(ulong));
         for (slong k = 0; k < d; k++)
@@ -253,13 +213,13 @@ TEST_FUNCTION_START(nmod_mat_poly_mintbasis, state)
         for (slong j = 0; j < m; j++)
             shift0[j] = (n_randint(state, 4) == 0) ? n_randint(state, 20) : 0;
 
-        result = core_test(E, m, n, prime, pts, d, shift0);
+        result = core_test_mintbasis(E, pts, d, shift0);
 
         if (!result)
-            TEST_FUNCTION_FAIL("prime = %wd, m = %wd, n = %wd, d = %wd, elen = %wd\n",
-                               prime, m, n, d, elen);
+            TEST_FUNCTION_FAIL("prime = %wd, m = %wd, n = %wd, d = %wd\n",
+                               prime, m, n, d);
 
-        free_E(E, elen);
+        nmod_mat_poly_clear(E);
         flint_free(pts);
         flint_free(shift0);
     }
@@ -274,10 +234,12 @@ TEST_FUNCTION_START(nmod_mat_poly_mintbasis, state)
             for (i = 0; i < 10 * flint_test_multiplier(); i++)
             {
                 slong n = 1 + n_randint(state, 16);
-                slong m = n + n_randint(state, 8); /* n <= m, including n == m */
+                slong m = n + n_randint(state, 16); /* n <= m, including n == m */
                 slong d = n_randint(state, prime + 1); /* 0 <= d <= prime */
 
-                nmod_mat_struct * E = build_random_E(m, n, prime, d, state);
+                nmod_mat_poly_t E;
+                nmod_mat_poly_init(E, m, n, prime);
+                nmod_mat_poly_rand(E, state, d);
 
                 ulong * pts = flint_malloc(FLINT_MAX(d, 1) * sizeof(ulong));
                 for (slong k = 0; k < d; k++)
@@ -297,13 +259,13 @@ TEST_FUNCTION_START(nmod_mat_poly_mintbasis, state)
                 for (slong j = 0; j < m; j++)
                     shift0[j] = (n_randint(state, 4) == 0) ? n_randint(state, 20) : 0;
 
-                result = core_test(E, m, n, prime, pts, d, shift0);
+                result = core_test_mintbasis(E, pts, d, shift0);
 
                 if (!result)
                     TEST_FUNCTION_FAIL("small-prime case: prime = %wu, m = %wd, n = %wd, d = %wd\n",
                                        prime, m, n, d);
 
-                free_E(E, d);
+                nmod_mat_poly_clear(E);
                 flint_free(pts);
                 flint_free(shift0);
             }
