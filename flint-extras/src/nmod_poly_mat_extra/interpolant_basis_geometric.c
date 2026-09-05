@@ -56,8 +56,7 @@ static void _pmintbasis_geometric_rec(nmod_poly_mat_t intbas,
     const slong d2 = d - d1;
 
     /* No truncated copy of E needed for the first half -- E may be longer
-       than d1, extra entries simply unused (see interpolant_basis.c's own
-       comment on this same simplification for nmod_poly_mat_pmintbasis). */
+       than d1, extra entries simply unused. */
     nmod_poly_mat_t P1;
     nmod_poly_mat_init(P1, m, m, intbas->modulus);
     _pmintbasis_geometric_rec(P1, shift, E, n, r, rho_start, d1, mod, G);
@@ -108,10 +107,7 @@ static void _pmintbasis_geometric_rec(nmod_poly_mat_t intbas,
     flint_free(zeta_pow);
 
     /* R, the "new E" for the second half's recursive call, is a plain
-       array too -- nmod_mat_mul writes each R_i directly, no intermediate
-       Ei/Ri extraction matrices or get/set_coeff_mat calls needed any
-       more (matches the same simplification in nmod_poly_mat_
-       pmintbasis). */
+       array too -- nmod_mat_mul writes each R_i directly. */
     nmod_mat_struct * R = (nmod_mat_struct *) flint_malloc(FLINT_MAX(d2, 1) * sizeof(nmod_mat_struct));
     nmod_mat_t evalP1;
     nmod_mat_init(evalP1, m, m, intbas->modulus);
@@ -179,10 +175,8 @@ void nmod_poly_mat_pmintbasis_geometric(nmod_poly_mat_t intbas,
 }
 
 /**  Tries `nmod_find_root` (`nmod_extra.h`) first, rather than going
- * straight to `n_primitive_root_prime` 
- * (`ulong_extras.h`, used by this PR's own tests/benchmarks to pick `r`):
- * the algorithm only needs an element of multiplicative order strictly
- * greater than `2*d`. */
+ * straight to `n_primitive_root_prime`, the algorithm only needs an 
+ * element of multiplicative order strictly greater than `2*d`. */
 void nmod_poly_mat_pmintbasis_geometric_auto(nmod_poly_mat_t intbas,
                                              slong * shift,
                                              ulong * pts,
@@ -191,7 +185,7 @@ void nmod_poly_mat_pmintbasis_geometric_auto(nmod_poly_mat_t intbas,
 {
     if (d == 0)
     {
-        nmod_poly_mat_pmintbasis_geometric(intbas, shift, pts, E, 0, d);
+        nmod_poly_mat_one(intbas);
         return;
     }
 

@@ -38,33 +38,12 @@
 
 #include "nmod_poly_mat_interpolant.h"
 #include "testing_collection.h"
-
-/* Converts a filled nmod_poly_mat_t (built via gen_E, which operates on
-   that entrywise representation) into the plain array
-   nmod_poly_mat_pmintbasis/mintbasis now expect -- same pattern as
-   bench_mintbasis.c's own matp_to_array. */
-static nmod_mat_struct * poly_mat_to_array(const nmod_poly_mat_t E, slong d)
-{
-    nmod_mat_struct * arr = (nmod_mat_struct *) flint_malloc(FLINT_MAX(d, 1) * sizeof(nmod_mat_struct));
-    for (slong k = 0; k < d; k++)
-    {
-        nmod_mat_init(arr + k, E->r, E->c, E->modulus);
-        nmod_poly_mat_get_coeff_mat(arr + k, E, k);
-    }
-    return arr;
-}
-
-static void free_array(nmod_mat_struct * arr, slong d)
-{
-    for (slong k = 0; k < d; k++)
-        nmod_mat_clear(arr + k);
-    flint_free(arr);
-}
+#include "interpolant_test_utils.h"
 
 /* d is passed explicitly rather than read off E: matches pts's own
    "array may be longer than d, extra ignored" convention -- see this
    header's "Conventions" section in nmod_poly_mat_interpolant.h. */
-static int core_test(const nmod_mat_struct * E, slong m, slong n, ulong prime,
+static int core_test_pmintbasis(const nmod_mat_struct * E, slong m, slong n, ulong prime,
                      const ulong * pts, slong d, const slong * shift0)
 {
     slong * sh_pm = flint_malloc(m * sizeof(slong));
@@ -73,7 +52,7 @@ static int core_test(const nmod_mat_struct * E, slong m, slong n, ulong prime,
 
     nmod_poly_mat_t out_pm;
     nmod_poly_mat_init(out_pm, m, m, prime);
-    nmod_poly_mat_pmintbasis(out_pm, sh_pm, E, n, pts, d);
+    nmod_poly_mat_pmintbasis(out_pm, sh_pm, pts, E, d);
 
     int res = 1;
 
@@ -87,7 +66,7 @@ static int core_test(const nmod_mat_struct * E, slong m, slong n, ulong prime,
             sh_m[i] = shift0[i];
         nmod_poly_mat_t out_m;
         nmod_poly_mat_init(out_m, m, m, prime);
-        nmod_poly_mat_mintbasis(out_m, sh_m, E, n, pts, d);
+        nmod_poly_mat_mintbasis(out_m, sh_m, pts, E, d);
 
         if (!nmod_poly_mat_equal(out_pm, out_m))
             res = 0;
@@ -100,7 +79,7 @@ static int core_test(const nmod_mat_struct * E, slong m, slong n, ulong prime,
     }
 
     /* genuine minimal interpolant basis, w.r.t. the original shift0. */
-    if (res && !nmod_poly_mat_is_interpolant_basis(out_pm, E, n, pts, d, shift0, ROW_LOWER))
+    if (res && !nmod_poly_mat_is_interpolant_basis(out_pm, pts, E, d, shift0, ROW_LOWER))
         res = 0;
 
     nmod_poly_mat_clear(out_pm);
@@ -118,8 +97,8 @@ TEST_FUNCTION_START(nmod_poly_mat_pmintbasis, state)
        back to return before touching E), so NULL is passed directly. */
     for (i = 0; i < 20; i++)
     {
-        slong n = 1 + n_randint(state, 10);
-        slong m = n + n_randint(state, 10);
+        slong n = 1 + n_randint(state, 12);
+        slong m = 1 + n_randint(state, 12);
         ulong prime = n_randprime(state, 2 + n_randint(state, 60), 1);
 
         nmod_poly_mat_t out;
@@ -128,7 +107,7 @@ TEST_FUNCTION_START(nmod_poly_mat_pmintbasis, state)
         for (slong j = 0; j < m; j++)
             shift[j] = n_randint(state, 10);
 
-        nmod_poly_mat_pmintbasis(out, shift, NULL, n, NULL, 0);
+        nmod_poly_mat_pmintbasis(out, shift, NULL, NULL, 0);
         if (!nmod_poly_mat_is_one(out))
             TEST_FUNCTION_FAIL("d=0 case: m = %wd, n = %wd, prime = %wu\n", m, n, prime);
 
@@ -136,10 +115,10 @@ TEST_FUNCTION_START(nmod_poly_mat_pmintbasis, state)
         flint_free(shift);
     }
 
-    for (i = 0; i < 80 * flint_test_multiplier(); i++)
+    for (i = 0; i < 100 * flint_test_multiplier(); i++)
     {
         slong n = 1 + n_randint(state, 16);
-        slong m = n + n_randint(state, 16); /* n <= m, including n == m */
+        slong m = 1 + n_randint(state, 16); /* n <= m, including n == m */
         slong d = n_randint(state, 250); /* well beyond a small overridden threshold */
 
         /* nbits' floor must guarantee some prime of that bit length exceeds
@@ -178,7 +157,7 @@ TEST_FUNCTION_START(nmod_poly_mat_pmintbasis, state)
         slong * shift0 = flint_malloc(m * sizeof(slong));
         gen_shift(shift0, m, d, state);
 
-        result = core_test(E, m, n, prime, pts, d, shift0);
+        result = core_test_pmintbasis(E, m, n, prime, pts, d, shift0);
 
         if (!result)
             TEST_FUNCTION_FAIL("prime = %wd, m = %wd, n = %wd, d = %wd\n", prime, m, n, d);
@@ -190,7 +169,7 @@ TEST_FUNCTION_START(nmod_poly_mat_pmintbasis, state)
 
     /* explicit very-small-prime stress coverage, mirroring t-mintbasis.c's
        own block (see its header comment for why: the main loop's `nbits`
-       floor of 20 never picks these, and the verifier's generation check is
+       floor  never picks these, and the verifier's generation check is
        an exact identity regardless of genericity, so tiny fields -- where
        coincidental rank degeneracies at a point are the rule rather than
        the exception -- are worth exercising directly). `d` is capped at
@@ -230,7 +209,7 @@ TEST_FUNCTION_START(nmod_poly_mat_pmintbasis, state)
                 slong * shift0 = flint_malloc(m * sizeof(slong));
                 gen_shift(shift0, m, d, state);
 
-                result = core_test(E, m, n, prime, pts, d, shift0);
+                result = core_test_pmintbasis(E, m, n, prime, pts, d, shift0);
 
                 if (!result)
                     TEST_FUNCTION_FAIL("small-prime case: prime = %wu, m = %wd, n = %wd, d = %wd\n",

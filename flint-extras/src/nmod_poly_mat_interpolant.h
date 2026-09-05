@@ -29,6 +29,15 @@
  * { p in K[X]^{1 x m}  |  p(pts_k) * E_k = 0 for 1 <= k <= d }.
  * Note that such a matrix is square, m x m, and nonsingular.
  *
+ *  The length of pts is at least d.
+ * 
+ * `E` is a plain, flat array of `nmod_mat_struct`, its length is also at least d.
+ * 
+ * `d`, the number of points to use, is a separate explicit parameter 
+ *    with  d <= (actual length of pts) and  d <= (actual length of E)
+ * 
+ *  pts and E may be longer than d, extra data is ignored byconvention.
+ * 
  * This is the point-evaluation analogue of an approximant basis (see
  * `nmod_poly_mat_approximant.h`): replacing "coefficient of `P*F`" (order
  * truncation) with "evaluation `P(pts_k)*E_k`" (interpolation) in the same
@@ -62,11 +71,11 @@
  * Most functions below use the following parameters.
  *
  * \param[out] intbas the output interpolant basis (cannot alias `E`)
+ * \param[in] pts the `d` pairwise distinct interpolation points.
  * \param[in] `E` is a plain, flat array of `nmod_mat_struct` (`nmod_mat_struct *`),
  *  a container for a sequence of constant matrices, (the
  *   coefficients of `E` at the points `pts`, not in the monomial basis), 
  *  its length is at least d.
- * \param[in] pts the `d` pairwise distinct interpolation points.
  * \param[in] `d` is a separate parameter SUCH THAT 
  *    `d <= (actual length of pts)`  and `d <= (actual length of E)`.
  * \param[in,out] shift in: the input shift; and out: the output shifted row
@@ -75,8 +84,6 @@
  * 
  * Sources.
  * --------
- * 
- * 
  * The algorithms are inspired from: 
  *   - B. Beckermann and G. Labahn. 2000. Fraction-free computation of matrix 
  *     rational interpolant and matrix gcds. 
@@ -123,9 +130,9 @@ extern "C" {
  * were adapted to points. 
  *
  * \param[in] intbas interpolant basis
+ * \param[in] pts the `d` pairwise distinct interpolation points
  * \param[in] E the input sequence, representing `d` constant matrices (see this
  *   header's own "Conventions" section)
- * \param[in] pts the `d` pairwise distinct interpolation points
  * \param[in] d number of points to actually consider, such that 
  *   `d <= (actual length of pts)` and `d <= (actual length of E)`.
  * \param[in] shift shift
@@ -184,7 +191,6 @@ void nmod_poly_mat_mintbasis(nmod_poly_mat_t intbas,
  *
  * At the end of the computation, the vector `shift` contains the shifted
  * row degree of `intbas`, for the input shift.
- *
  */
 //@{
 
@@ -209,10 +215,7 @@ void nmod_poly_mat_pmintbasis(nmod_poly_mat_t intbas,
  * progression evaluate/interpolate machinery (`nmod_geometric_progression_t`,
  * `nmod_poly.h`). One such structure is built once, at the top of the
  * whole recursion, and reused (at varying, always-shorter requested
- * lengths, a documented property of that structure: "requires olen <=
- * G->len") at every recursion level and for every matrix entry -- this
- * sharing is what makes this specialization consistently faster than the
- * general-points @ref nmod_poly_mat_pmintbasis at matching sizes.
+ * lengths). 
  */
 //@{
 
@@ -238,8 +241,7 @@ void nmod_poly_mat_pmintbasis_geometric(nmod_poly_mat_t intbas,
 
 
 /** Tries `nmod_find_root` (`nmod_extra.h`) first, rather than going
- * straight to `n_primitive_root_prime`
- * (`ulong_extras.h`, used by this PR's own tests/benchmarks to pick `r`):
+ * straight to `n_primitive_root_prime`, 
  * the algorithm only needs an element of multiplicative order strictly
  * greater than `2*d` (so that `rho = r^2`'s own order exceeds `d`, the
  * number of points requested -- see nmod_poly_mat_interpolant.h's own
@@ -260,7 +262,7 @@ void nmod_poly_mat_pmintbasis_geometric(nmod_poly_mat_t intbas,
  * version, inherited unchanged); throws if no element of sufficient order
  * is found, rather than silently proceeding with a degenerate `r` (0) --
  * mirroring how "cannot proceed" cases are handled elsewhere in this
- * project (e.g. v01's own `!Cert` handling) rather than risking a wrong
+ * project, rather than risking a wrong
  * answer. `d = 0` needs no such element at all (matching @ref
  * nmod_poly_mat_pmintbasis_geometric's own `d == 0` guard, which returns
  * before `r` is ever used), so this never throws when `d = 0`, regardless

@@ -739,7 +739,7 @@ void nmod_mat_poly_mbasis(nmod_mat_poly_t appbas,
  * 
  * `E` is a plain, flat array of `nmod_mat_struct` (`nmod_mat_struct *`),
  *  a container for a  * sequence of `d` constant matrices,
- *  its length is at least d.
+ *  its length is also at least d.
  * 
  * * * `d`, the number of points to use, is a separate explicit parameter
  * rather than being read off from pts or E, 
@@ -825,7 +825,7 @@ void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
  * and its number of points `d`.
  *
  * The condition here, `d*(m-n+1) <= m`, was found by direct measurement
- * over a grid of `(m,n,d)`.
+ * over a grid of `(m,n,d)`. TO INVESTIGATE.
  * 
  * \todo investigate for a better dispatcher.
  */

@@ -11,7 +11,7 @@
 */
 
 /** Targets nmod_poly_mat_pmintbasis_geometric. Checks it against the
- * general-points nmod_poly_mat_pmintbasis, called with the SAME points
+ * general-points nmod_poly_mat_pmintbasis, called with the same points
  * (the ones the geometric version actually used, returned via its own
  * `pts` output parameter): since both make the same D&C splits and share
  * the same mintbasis base case, only the residual step's method of
@@ -31,6 +31,13 @@
  *     smaller d at a given prime, and primes 2/3 are skipped entirely
  *     (they only admit d=0, already covered by ordinary d=0 draws in the
  *     main loop's own d range).
+ * 
+ * gen_shift/gen_E (one of testing_collection.h's 8 shift forms / 7 matrix
+ * forms, picked at random per trial rather than looping over the full
+ * grid) are provided directly by testing_collection.h itself (already
+ * included above).
+ * Converts a filled nmod_poly_mat_t (built via gen_E) into the plain array
+ * nmod_poly_mat_pmintbasis/pmintbasis_geometric expects. 
  */
 
 #include <flint/test_helpers.h>
@@ -39,7 +46,7 @@
 
 #include "nmod_poly_mat_interpolant.h"
 #include "testing_collection.h"
-
+#include "interpolant_test_utils.h"
 
 static int core_test_pmintbasis_geometric(slong m, slong n, slong d, ulong p, flint_rand_t state)
 {
@@ -49,9 +56,14 @@ static int core_test_pmintbasis_geometric(slong m, slong n, slong d, ulong p, fl
        guarantees p > 2d+1 and p prime. */
     ulong r = n_primitive_root_prime(p);
 
-    nmod_poly_mat_t E;
-    nmod_poly_mat_init(E, m, n, p);
-    gen_E(E, d, state);
+    nmod_poly_mat_t E_poly;
+    nmod_poly_mat_init(E_poly, m, n, p);
+    gen_E(E_poly, d, state);
+    nmod_mat_struct * E = poly_mat_to_array(E_poly, d);
+    nmod_poly_mat_clear(E_poly); /* nmod_poly_mat_is_interpolant_basis now
+                                     takes E as a plain array too (see
+                                     verification.c), so this conversion's
+                                     source is not needed afterward */
 
     slong * shift0 = flint_malloc(m * sizeof(slong));
     gen_shift(shift0, m, d, state);
@@ -66,21 +78,24 @@ static int core_test_pmintbasis_geometric(slong m, slong n, slong d, ulong p, fl
     nmod_poly_mat_init(intbas_geo, m, m, p);
     nmod_poly_mat_init(intbas_gen, m, m, p);
 
-    nmod_poly_mat_pmintbasis_geometric(intbas_geo, shift_geo, E, r, d, pts);
-    nmod_poly_mat_pmintbasis(intbas_gen, shift_gen, E, pts, d);
+    nmod_poly_mat_pmintbasis_geometric(intbas_geo, shift_geo, pts, E, r, d);
+    nmod_poly_mat_pmintbasis(intbas_gen, shift_gen, pts, E, d);
 
     int res = nmod_poly_mat_equal(intbas_geo, intbas_gen);
     for (slong i = 0; i < m; i++)
         if (shift_geo[i] != shift_gen[i])
             res = 0;
 
-    /* defining property, directly on the geometric version's own output */
-    if (res && !nmod_poly_mat_is_interpolant_basis(intbas_geo, E, pts, d, shift0, ROW_LOWER))
+    /* defining property, directly on the geometric version's own output,
+       w.r.t. the original shift0 (shift_geo/shift_gen were mutated by the
+       construction calls above). nmod_poly_mat_is_interpolant_basis 
+       takes E as a plain array too, so E is passed straight through. */
+    if (res && !nmod_poly_mat_is_interpolant_basis(intbas_geo, pts, E, d, shift0, ROW_LOWER))
         res = 0;
 
     nmod_poly_mat_clear(intbas_geo);
     nmod_poly_mat_clear(intbas_gen);
-    nmod_poly_mat_clear(E);
+    free_array(E, d);
     flint_free(pts);
     flint_free(shift0);
     flint_free(shift_geo);

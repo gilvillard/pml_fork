@@ -56,7 +56,7 @@ static void _shift_sort_permutation(slong * perm,
  * problem's own column count, since nullity=m-n generically) -- so this
  * helps exactly when `n` is small relative to `m`.
  *
- *  THRES=4 is a crossover found by measurements
+ *  THRES=4 is a crossover found by preliminary measurements
  *  TODO investigate this.  */
 #ifndef NMOD_MAT_POLY_MINTBASIS_LOWRANK_THRES
 #define NMOD_MAT_POLY_MINTBASIS_LOWRANK_THRES 4
@@ -144,7 +144,7 @@ void nmod_mat_poly_mintbasis_rescomp(nmod_mat_poly_t intbas,
         /* fold: last `nullity` rows <- nsbas * (first m-nullity rows) + themselves.
            Dispatches to explicit rank-1 updates when the inner dimension
            (m-nullity, generically = n) is small -- see
-           _mintbasis_low_rank_addmul's own doc comment for measurements */ 
+           _mintbasis_low_rank_addmul's own doc comments */ 
         if (m - nullity <= NMOD_MAT_POLY_MINTBASIS_LOWRANK_THRES)
         {
             nmod_mat_t win_mul, win_add;
@@ -432,7 +432,8 @@ void nmod_mat_poly_mintbasis_resupdate(nmod_mat_poly_t intbas,
 /** Main `mintbasis` function: chooses between
  * @ref nmod_mat_poly_mintbasis_rescomp and
  * @ref nmod_mat_poly_mintbasis_resupdate depending on the shape of `E`
- * and the number of points `d` s.t. `d <= (actual length of pts)`.
+ * and the number of points `d` s.t. `d <= (actual length of pts)` and 
+ * `d <= (actual length of E)`.
  * 
  * Both variants always agree bit-for-bit, so this dispatch is a pure
  * timing decision, never a correctness one.
@@ -448,7 +449,7 @@ void nmod_mat_poly_mintbasis(nmod_mat_poly_t intbas,
                              slong d)
 {
     /* d=0: both variants return the identity with no other side effect
-       (checked first thing in each, before n would be read off E), so
+       (checked first thing in each, before reading E), so
        there is nothing to dispatch on and E is never dereferenced --
        matches the established "E is never dereferenced when d=0"
        convention (see e.g. interpolant_basis_geometric_auto.c). */

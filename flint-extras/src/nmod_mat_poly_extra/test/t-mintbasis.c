@@ -24,7 +24,7 @@
  *       differs);
  *   (2) the dispatcher's output equals whichever of the two variants its
  *       own condition (d*(m-n+1) <= m) selects;
- *      CHECK nmod_mat_poly_mintbasis.c agrees with this formula 
+ *       TODO CHECK nmod_mat_poly_mintbasis.c agrees with this formula 
  *   (3) the dispatcher's output is a genuine minimal interpolant basis
  *       (membership + generation, via the verifier), w.r.t. the original 
  *       (pre-call) shift -- shift is mutated in place by the construction
@@ -110,8 +110,8 @@ static int check_d0(slong m, slong n, ulong prime, flint_rand_t state)
 /* returns 1 if the trial passed all checks, 0 otherwise. `elen` (E's own
    allocated length, >= d) is not needed here: every consumer only ever
    reads E[0..d-1], matching pts's own "array may be longer than d, extra
-   ignored" convention -- see build_random_E's own doc comment. */
-static int core_test(const nmod_mat_struct * E, slong m, slong n, ulong prime,
+   ignored" convention. */
+static int core_test_mintbasis(const nmod_mat_struct * E, slong m, slong n, ulong prime,
                      const ulong * pts, slong d, const slong * shift0)
 {
     slong * sh_res = flint_malloc(m * sizeof(slong));
@@ -203,14 +203,13 @@ TEST_FUNCTION_START(nmod_mat_poly_mintbasis, state)
 
     for (i = 0; i < 100 * flint_test_multiplier(); i++)
     {
-        slong n = 1 + n_randint(state, 10);
-        slong m = 1 + n_randint(state, 10); /* n <= m, including n == m */
+        slong n = 1 + n_randint(state, 16);
+        slong m = 1 + n_randint(state, 16); /* n <= m, including n == m */
         slong d = n_randint(state, 150);
 
         /* nbits' floor must guarantee some prime of that bit length exceeds
            bound, or the retry loop below never terminates (nbits is fixed
-           before the retry starts). Tying the floor to bound -- instead of
-           a fixed constant such as the 20 this replaces -- lets nbits range
+           before the retry starts). Tying the floor to bound lets nbits range
            down as low as 3-4 bits when d is small, closing the gap between
            this loop's main range and the explicit {2,3,5,7,11} block below,
            see t-pmintbasis.c's own version of this same fix. */
@@ -248,7 +247,7 @@ TEST_FUNCTION_START(nmod_mat_poly_mintbasis, state)
         for (slong j = 0; j < m; j++)
             shift0[j] = (n_randint(state, 4) == 0) ? n_randint(state, 20) : 0;
 
-        result = core_test(E, m, n, prime, pts, d, shift0);
+        result = core_test_mintbasis(E, m, n, prime, pts, d, shift0);
 
         if (!result)
             TEST_FUNCTION_FAIL("prime = %wd, m = %wd, n = %wd, d = %wd, elen = %wd\n",
@@ -292,7 +291,7 @@ TEST_FUNCTION_START(nmod_mat_poly_mintbasis, state)
                 for (slong j = 0; j < m; j++)
                     shift0[j] = (n_randint(state, 4) == 0) ? n_randint(state, 20) : 0;
 
-                result = core_test(E, m, n, prime, pts, d, shift0);
+                result = core_test_mintbasis(E, m, n, prime, pts, d, shift0);
 
                 if (!result)
                     TEST_FUNCTION_FAIL("small-prime case: prime = %wu, m = %wd, n = %wd, d = %wd\n",

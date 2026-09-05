@@ -16,9 +16,8 @@
 #include "nmod_mat_poly.h"
 #include "nmod_poly_mat_utils.h"
 
-/** nmod_mat_poly_mintbasis takes E as a plain, flat array of `d`
-       already-initialized nmod_mat_t's (nmod_mat_struct *), just a 
-       container for `d`*/
+/** nmod_mat_poly_mintbasis takes E as a plain, flat array of at 
+ *     least `d` already-initialized nmod_mat_t's (nmod_mat_struct *)*/ 
 void nmod_poly_mat_mintbasis(nmod_poly_mat_t intbas,
                              slong * shift,
                              const ulong * pts,
@@ -53,6 +52,8 @@ void nmod_poly_mat_pmintbasis(nmod_poly_mat_t intbas,
     const slong d1 = (d + 1) / 2;
     const slong d2 = d - d1;
 
+    /* No truncated copy of E needed for the first half -- E may be longer
+       than d1, extra entries simply unused. */
     nmod_poly_mat_t P1;
     nmod_poly_mat_init(P1, m, m, intbas->modulus);
     nmod_poly_mat_pmintbasis(P1, shift, pts, E, d1);

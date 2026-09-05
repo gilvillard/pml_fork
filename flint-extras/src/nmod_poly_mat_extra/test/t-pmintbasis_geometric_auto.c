@@ -32,11 +32,17 @@
 #include "nmod_poly_mat_interpolant.h"
 
 
+
 static int core_test_pmintbasis_geometric_auto(slong m, slong n, slong d, ulong p, flint_rand_t state)
 {
-    nmod_poly_mat_t E;
-    nmod_poly_mat_init(E, m, n, p);
-    nmod_poly_mat_rand(E, state, d);
+    nmod_poly_mat_t E_poly;
+    nmod_poly_mat_init(E_poly, m, n, p);
+    nmod_poly_mat_rand(E_poly, state, d);
+    nmod_mat_struct * E = poly_mat_to_array(E_poly, d);
+    nmod_poly_mat_clear(E_poly); /* nmod_poly_mat_is_interpolant_basis now
+                                     takes E as a plain array too (see
+                                     verification.c), so this conversion's
+                                     source is not needed afterward */
 
     slong * shift0 = flint_malloc(m * sizeof(slong));
     for (slong i = 0; i < m; i++)
@@ -52,20 +58,22 @@ static int core_test_pmintbasis_geometric_auto(slong m, slong n, slong d, ulong 
     nmod_poly_mat_init(intbas_auto, m, m, p);
     nmod_poly_mat_init(intbas_gen, m, m, p);
 
-    nmod_poly_mat_pmintbasis_geometric_auto(intbas_auto, shift_auto, E, d, pts);
-    nmod_poly_mat_pmintbasis(intbas_gen, shift_gen, E, pts, d);
+    nmod_poly_mat_pmintbasis_geometric_auto(intbas_auto, shift_auto, pts, E, d);
+    nmod_poly_mat_pmintbasis(intbas_gen, shift_gen, pts, E, d);
 
     int res = nmod_poly_mat_equal(intbas_auto, intbas_gen);
     for (slong i = 0; i < m; i++)
         if (shift_auto[i] != shift_gen[i])
             res = 0;
 
-    if (res && !nmod_poly_mat_is_interpolant_basis(intbas_auto, E, pts, d, shift0, ROW_LOWER))
+    /* nmod_poly_mat_is_interpolant_basis takes E as a plain array too,
+       so E is passed straight through. */
+    if (res && !nmod_poly_mat_is_interpolant_basis(intbas_auto, pts, E, d, shift0, ROW_LOWER))
         res = 0;
 
     nmod_poly_mat_clear(intbas_auto);
     nmod_poly_mat_clear(intbas_gen);
-    nmod_poly_mat_clear(E);
+    free_array(E, d);
     flint_free(pts);
     flint_free(shift0);
     flint_free(shift_auto);
@@ -83,22 +91,22 @@ TEST_FUNCTION_START(nmod_poly_mat_pmintbasis_geometric_auto, state)
        d=0, see interpolant_basis_geometric_auto.c) */
     {
         ulong small_primes[] = {2, 3, 5, 7, 11};
-        for (i = 0; i < 20; i++)
+        for (i = 0; i < 5; i++)
         {
-            slong n = 1 + n_randint(state, 10);
-            slong m = n + n_randint(state, 10);
-            ulong prime = small_primes[n_randint(state, 5)];
+            ulong prime = small_primes[i];
+            slong m = 1 + n_randint(state, 10);
 
-            nmod_poly_mat_t E, out;
-            nmod_poly_mat_init(E, m, n, prime);
+            nmod_poly_mat_t out;
             nmod_poly_mat_init(out, m, m, prime);
             slong * shift = flint_calloc(m, sizeof(slong));
 
-            nmod_poly_mat_pmintbasis_geometric_auto(out, shift, E, 0, NULL);
+            /* E is never dereferenced when d=0, so NULL is passed
+               directly; n (dropped as a parameter entirely) is
+               irrelevant here regardless. */
+            nmod_poly_mat_pmintbasis_geometric_auto(out, shift, NULL, NULL, 0);
             if (!nmod_poly_mat_is_one(out))
-                TEST_FUNCTION_FAIL("d=0 case: m = %wd, n = %wd, prime = %wu\n", m, n, prime);
+                TEST_FUNCTION_FAIL("d=0 case: m = %wd, prime = %wu\n", m, prime);
 
-            nmod_poly_mat_clear(E);
             nmod_poly_mat_clear(out);
             flint_free(shift);
         }
