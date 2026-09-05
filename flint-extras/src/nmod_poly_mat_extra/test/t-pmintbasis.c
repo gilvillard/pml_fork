@@ -185,7 +185,7 @@ TEST_FUNCTION_START(nmod_poly_mat_pmintbasis, state)
             for (i = 0; i < 10 * flint_test_multiplier(); i++)
             {
                 slong n = 1 + n_randint(state, 4);
-                slong m = n + n_randint(state, 4); /* n <= m, including n == m */
+                slong m = 1 + n_randint(state, 4); /* any m, n, including n == m */
                 slong d = n_randint(state, prime + 1); /* 0 <= d <= prime */
 
                 nmod_poly_mat_t E_poly;

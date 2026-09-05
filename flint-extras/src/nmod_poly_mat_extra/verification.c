@@ -386,7 +386,9 @@ static int nmod_poly_mat_is_interpolant_basis_nondistinct(const nmod_poly_mat_t 
 }
 
 
-/** Dispatcher between the distinc and non-distinct cases. 
+/** Dispatcher between the distinct and non-distinct cases. 
+ *  The two branches are mathematically equivalent on 
+ * distinct points, so this is a performance dispatch, not a correctness fork.
  */
 int nmod_poly_mat_is_interpolant_basis(const nmod_poly_mat_t intbas,
                                          const ulong * pts,
