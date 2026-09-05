@@ -25,6 +25,7 @@
 #include "t-mbasis.c"
 #include "t-pmbasis.c"
 #include "t-pmintbasis.c"
+#include "t-pmintbasis_nondistinct.c"
 #include "t-pmintbasis_geometric.c"
 #include "t-pmintbasis_geometric_auto.c"
 #include "t-rand.c"
@@ -45,6 +46,7 @@ test_struct tests[] =
     TEST_FUNCTION(nmod_poly_mat_mulmid),
     TEST_FUNCTION(nmod_poly_mat_pmbasis),
     TEST_FUNCTION(nmod_poly_mat_pmintbasis),
+    TEST_FUNCTION(nmod_poly_mat_pmintbasis_nondistinct),
     TEST_FUNCTION(nmod_poly_mat_pmintbasis_geometric),
     TEST_FUNCTION(nmod_poly_mat_pmintbasis_geometric_auto),
     TEST_FUNCTION(nmod_poly_mat_rand),
