@@ -729,11 +729,14 @@ void nmod_mat_poly_mbasis(nmod_mat_poly_t appbas,
  *
  * The functions here compute a `shift`-minimal ordered weak Popov
  * interpolant basis for `(E,pts)`: for `E = (E_1,...,E_d)` in `K^{m x n}`
- * and pairwise distinct points `pts = (pts_1,...,pts_d)` in `K`, this is a
+ * and points `pts = (pts_1,...,pts_d)` in `K`, this is a
  * basis of `{p in K[x]^{1 x m} : p(pts_k)*E_k = 0 for 1<=k<=d}`. This is
  * the point-evaluation analogue of `mbasis` (see @ref mbasis): the same
  * iterative construction, with "coefficient of `P*F`" (order truncation)
  * replaced by "evaluation `P(pts_k)*E_k`" (interpolation).
+ * 
+ * No assumption such that pairwise distinct points, even though, for now, 
+ * applications of the non-distinct case are not included in pml.
  *
  * The length of pts is at least d.
  * 

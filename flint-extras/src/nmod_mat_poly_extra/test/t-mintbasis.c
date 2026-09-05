@@ -10,7 +10,10 @@
     <https://www.gnu.org/licenses/>.
 */
 
-/** Targets nmod_mat_poly_mintbasis_rescomp / _resupdate / the
+/** 
+ * Targets the pairwise distinct points case.
+ * 
+ * Targets nmod_mat_poly_mintbasis_rescomp / _resupdate / the
  * nmod_mat_poly_mintbasis dispatcher directly. Uses nmod_poly_mat_is_
  * interpolant_basis (verification.c, this same staging area) for the
  * defining-property check -- the M-level output (nmod_mat_poly_t) is

@@ -19,10 +19,13 @@
  * Consider:
  *   - an m x n matrix of univariate polynomials, given as `d` matrices
  *     `E = (E_1,...,E_d)` in `K^{m x n}` (the coefficients of E at `d`
- *     specific, pairwise distinct points `pts = (pts_1,...,pts_d)` (not)
+ *     specific, points `pts = (pts_1,...,pts_d)` (not)
  *     the coefficients of a polynomial matrix in the usual monomial
  *     basis),
  *   - the points `pts` themselves.
+ * 
+ * No assumption such that pairwise distinct points even though, for now, 
+ * applications of the non-distinct case are not included in pml.
  *
  * Then an interpolant basis for `(E,pts)` is a matrix over the univariate
  * polynomials whose rows form a basis for the following module:
@@ -71,7 +74,7 @@
  * Most functions below use the following parameters.
  *
  * \param[out] intbas the output interpolant basis (cannot alias `E`)
- * \param[in] pts the `d` pairwise distinct interpolation points.
+ * \param[in] pts the `d` interpolation points.
  * \param[in] `E` is a plain, flat array of `nmod_mat_struct` (`nmod_mat_struct *`),
  *  a container for a sequence of constant matrices, (the
  *   coefficients of `E` at the points `pts`, not in the monomial basis), 
@@ -130,7 +133,7 @@ extern "C" {
  * were adapted to points. 
  *
  * \param[in] intbas interpolant basis
- * \param[in] pts the `d` pairwise distinct interpolation points
+ * \param[in] pts the `d` interpolation points
  * \param[in] E the input sequence, representing `d` constant matrices (see this
  *   header's own "Conventions" section)
  * \param[in] d number of points to actually consider, such that 

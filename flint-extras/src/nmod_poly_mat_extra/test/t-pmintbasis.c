@@ -11,7 +11,9 @@
 */
 
 
-/** Targets nmod_poly_mat_mintbasis and nmod_poly_mat_pmintbasis directly.
+/** Targets the pairwise distinct points case.
+ *
+ * Targets nmod_poly_mat_mintbasis and nmod_poly_mat_pmintbasis directly.
  * Uses nmod_poly_mat_is_interpolant_basis (verification.c, this same
  * staging area) for the defining-property check.
  * Also checks that nmod_poly_mat_pmintbasis, whose base case IS a direct
