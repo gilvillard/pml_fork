@@ -118,7 +118,7 @@ TEST_FUNCTION_START(nmod_poly_mat_pmintbasis, state)
     for (i = 0; i < 100 * flint_test_multiplier(); i++)
     {
         slong n = 1 + n_randint(state, 16);
-        slong m = 1 + n_randint(state, 16); /* n <= m, including n == m */
+        slong m = 1 + n_randint(state, 16); /* any m, n */
         slong d = n_randint(state, 250); /* well beyond a small overridden threshold */
 
         /* nbits' floor must guarantee some prime of that bit length exceeds
