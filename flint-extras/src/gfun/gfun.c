@@ -69,243 +69,16 @@ void mat_to_xy(nmod_mpoly_t P, nmod_mpoly_ctx_t ctx, const nmod_poly_mat_t PT)
  * the way -- see that file and gfun.h for the current declarations/docs). */
 
 
-void nmod_phi_T(nmod_poly_t  phi1, nmod_poly_t  phi2, const nmod_poly_mat_t CT, \
-                     const nmod_poly_mat_t PT, const nmod_poly_t Delta)
-{
+/* nmod_phi_T has moved to algeqtodiffeq.c, next to nmod_phi1 (its natural
+ * sibling) -- see that file and gfun.h for the current declaration/doc,
+ * and claude-pseudoKrylov/todo.md for why deg(phi1)==deg(phi2) is exactly
+ * the width(T)<=1 check. */
 
-    ulong prime;
-    prime = nmod_poly_mat_modulus(PT);
 
-    slong r = (PT->r)-1;
 
-    slong d;
-    d = nmod_poly_mat_degree(PT);
-
-    /** Bound on the output degree 
-     *   using constant random column projections  
-     */
-
-    slong D = (2*r-1)*d -1; // M^* and Y  (2r-2)d + (d-1)  
-
-    flint_rand_t state;
-    flint_rand_init(state);
-    srand(time(NULL));
-    flint_rand_set_seed(state, rand(), rand());
-
-
-    nmod_poly_mat_t randT1, randT2;
-    nmod_poly_mat_init(randT1,r,1,prime);
-    nmod_poly_mat_init(randT2,r,1,prime);
-
-    // Better than randtest matrix to be sure to have nonzero entries / Check nonzero ? 
-    for (int i=0; i<r; i++)
-    {
-        //nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT1, i, 0), 0, n_randtest(state) % prime);
-        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT1, i, 0), 0, n_randbits(state,FLINT_BITS-2));
-
-        //nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT2, i, 0), 0, n_randtest(state) % prime); 
-        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT2, i, 0), 0, n_randbits(state,FLINT_BITS-2));
-
-    }
-
-    nmod_poly_mat_t  colT1,colT2;
-    nmod_poly_mat_init(colT1,r,1,prime);
-    nmod_poly_mat_init(colT2,r,1,prime);
-
-
-    nmod_apply_T(colT1, randT1, CT, PT, D); 
-    nmod_apply_T(colT2, randT2, CT, PT, D); 
-
-    nmod_poly_t g;
-    nmod_poly_init(g,prime); // re-used below 
-
-    nmod_poly_gcd_hgcd(g, nmod_poly_mat_entry(colT1, 0, 0), Delta);
-
-    for (int i=1; i<r; i++)
-    {
-        nmod_poly_gcd_hgcd(g, g, nmod_poly_mat_entry(colT1, i, 0));
-    }
-
-    nmod_poly_div(phi1,Delta,g);
-
-
-    /** Random row projections for phi2
-     *   use matrices for potential generalizations 
-     */    
-
-    nmod_poly_mat_t randU;
-    nmod_poly_mat_init(randU,2,r,prime);
-    // Check nonzero ? 
-    for (int i=0; i<r; i++)
-    {
-        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randU, 0, i), 0, n_randtest(state) % prime);
-        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randU, 1, i), 0, n_randtest(state) % prime); 
-    }
-
-    nmod_poly_mat_t P1,P2;
-    nmod_poly_mat_init(P1,2,1,prime);
-    nmod_poly_mat_init(P2,2,1,prime);
-
-    nmod_poly_mat_mul(P1,randU,colT1);
-    nmod_poly_mat_mul(P2,randU,colT2);
-
-    nmod_poly_t tp1,tp2;
-    nmod_poly_init(tp1,prime); 
-    nmod_poly_init(tp2,prime); 
-
-    nmod_poly_mul(tp1,nmod_poly_mat_entry(P1, 0, 0),nmod_poly_mat_entry(P2, 1, 0));
-    nmod_poly_mul(tp2,nmod_poly_mat_entry(P1, 1, 0),nmod_poly_mat_entry(P2, 0, 0));
-    nmod_poly_sub(tp1,tp1,tp2);
-
-    nmod_poly_div(tp1,tp1,Delta);
-    nmod_poly_gcd_hgcd(g, tp1, Delta);
-    nmod_poly_div(phi2,Delta,g);   
-
-
-    flint_rand_clear(state);
-
-    nmod_poly_clear(g);
-    nmod_poly_clear(tp1);
-    nmod_poly_clear(tp2);
-
-    nmod_poly_mat_clear(randT1);
-    nmod_poly_mat_clear(randT2);
-    nmod_poly_mat_clear(colT1);
-    nmod_poly_mat_clear(colT2);
-    nmod_poly_mat_clear(randU);
-    nmod_poly_mat_clear(P1);
-    nmod_poly_mat_clear(P2);
-}
-
-
-
-/**  Includes simplication to have phi1 at denominator 
- */
-
-void find_uv(nmod_poly_mat_t U, nmod_poly_mat_t V, const nmod_poly_t  phi1, const nmod_poly_mat_t CT, \
-                     const nmod_poly_mat_t PT, const nmod_poly_t Delta)
-{
-
-    int i,j;
-
-    ulong prime;
-    prime = nmod_poly_mat_modulus(PT);
-
-    slong r = (PT->r)-1;
-
-    slong d;
-    d = nmod_poly_mat_degree(PT);
-
-    /** Bound on the output degree 
-     *   using constant random column projections  
-     */
-
-    slong D = (2*r-1)*d -1; // M^* and Px  (2r-2)d + (d-1)  
-
-    flint_rand_t state;
-    flint_rand_init(state);
-    srand(time(NULL));
-    flint_rand_set_seed(state, rand(), rand());
-
-
-    nmod_poly_mat_t Z, W;
-    nmod_poly_mat_init(Z,r,1,prime);
-    nmod_poly_mat_init(W,1,r,prime);
-
-    // Better than randtest matrix to be sure to have nonzero entries / Check nonzero ? 
-    for (i=0; i<r; i++)
-    {
-        //nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT1, i, 0), 0, n_randtest(state) % prime);
-        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(Z, i, 0), 0, n_randbits(state,FLINT_BITS-2));
-
-        //nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT2, i, 0), 0, n_randtest(state) % prime); 
-        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(W, 0, i), 0, n_randbits(state,FLINT_BITS-2));
-
-    }
-
-
-    nmod_poly_t g;
-    nmod_poly_init(g,prime);
-    nmod_poly_div(g,Delta,phi1);
-
-
-    /** Computation of T 
-     *  ----------------
-     *     could be done via applyT for U 
-     *      but the transpose for V ? 
-     */
-
-    nmod_poly_mat_t Yk, T, temp;
-
-    nmod_poly_mat_init(Yk,r,1,prime);
-    nmod_poly_mat_init(temp,r,1,prime);
-
-    nmod_poly_mat_init(T,r,r,prime);
-
-
-    for (i=0; i<r; i++)
-    {
-        nmod_poly_zero(nmod_poly_mat_entry(T, i, 0)); 
-    }
-
-    for (j=1; j<r; j++)
-    {
-        for (i=0; i<r; i++)
-        {
-            nmod_poly_zero(nmod_poly_mat_entry(Yk, i, 0));
-        }
-        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(Yk, j, 0), 0, 1);
-
-        nmod_apply_T(temp, Yk, CT, PT, D); 
-
-        for (i=0; i<r; i++)
-        {
-            nmod_poly_div(nmod_poly_mat_entry(T, i, j), nmod_poly_mat_entry(temp, i, 0), g);
-        }
-    }
-
-    /**  Computation of U = T.Z
-     *   ----------------------
-     */
-
-    nmod_poly_mat_multiply(U,T,Z);
-
-
-    /**  Computation of V = W.T
-     *   ----------------------
-     */
-
-    nmod_poly_mat_multiply(V,W,T);
-
-
-    nmod_poly_mat_t e;
-    nmod_poly_mat_init(e,1,1,prime);
-    nmod_poly_mat_multiply(e,W,U);
-
-    nmod_poly_t epol;
-    nmod_poly_init(epol,prime);
-    nmod_poly_set(epol,nmod_poly_mat_entry(e, 0, 0));
-
-    nmod_poly_invmod(epol, epol, phi1); 
-
-
-    for (i=0; i<r; i++)
-    {
-        nmod_poly_mul(nmod_poly_mat_entry(V, 0, i), nmod_poly_mat_entry(V, 0, i), epol); 
-        nmod_poly_rem(nmod_poly_mat_entry(V, 0, i),nmod_poly_mat_entry(V, 0, i),phi1);
-
-    }
-
-    nmod_poly_mat_clear(W);
-    nmod_poly_mat_clear(Z);
-    nmod_poly_mat_clear(Yk);
-    nmod_poly_mat_clear(temp);
-    nmod_poly_mat_clear(T);
-    nmod_poly_mat_clear(e);
-
-    nmod_poly_clear(g);
-    nmod_poly_clear(epol);
-}
+/* find_uv has moved to algeqtodiffeq_width1.c (cleaned up, takes an
+ * explicit flint_rand_t -- see that file and gfun.h for the current
+ * declaration/doc). */
 
 
 
@@ -772,20 +545,16 @@ void nmod_pseudo_Krylov_for_kernel(nmod_poly_mat_t K, const ulong n, const nmod_
     nmod_biv_mulmod_geometric(CT, PxT, iPyT, PT, D); 
 
 
-    /**  Randomized Computation of phi_1 and phi_2 (non monic)
-     *   -----------------------------------------------------
-     */
+    /* Was: randomized computation of phi1 and phi2 via nmod_phi_T, then
+     * both immediately discarded (phi1 overwritten by Delta below, phi2
+     * never read at all) -- dead computation, removed 2026-09-15 (found
+     * while updating nmod_phi_T's signature elsewhere; this call site's
+     * own result was never used, so nothing else needed changing). */
 
-    nmod_poly_t phi1,phi2;
+    nmod_poly_t phi1;
     nmod_poly_init(phi1,prime);
-    nmod_poly_init(phi2,prime);
 
-
-    nmod_phi_T(phi1, phi2, CT, PT, Delta);
-
-    //flint_printf("\n deg phi1: %ld\n",nmod_poly_degree(phi1));
-
-    /** 
+    /**
      *   !!!! Version not using phi1
      *   ---------------------------
      */
@@ -826,12 +595,11 @@ void nmod_pseudo_Krylov_for_kernel(nmod_poly_mat_t K, const ulong n, const nmod_
         
     nmod_poly_clear(Delta);
     nmod_poly_clear(phi1);
-    nmod_poly_clear(phi2);
     nmod_poly_clear(tpol);
 }
 
 
-/**  algeqtodiffeq 
+/**  algeqtodiffeq
  * 
  *   Fraction-free pseudo-Krylov matrix: full computation w.r.t. phi1
  * 
@@ -2303,7 +2071,18 @@ slong nmod_algeq_to_diffeq_new(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, con
     nmod_biv_mulmod_geometric(CT, PxT, iPyT, PT, D); 
 
 
-    nmod_phi_T(phi1, phi2, CT, PT, Delta);
+    // TODO(cleanup): matches the rest of this file's not-yet-fixed
+    // per-call reseeding elsewhere, see claude-pseudoKrylov/todo.md --
+    // this one occurrence is at least consolidated: one state, seeded
+    // once, reused below for find_uv too (rather than a second,
+    // independently-reseeded one), per that same item's "real fix"
+    // direction (one seeded flint_rand_t per driver).
+    flint_rand_t rand_state;
+    flint_rand_init(rand_state);
+    srand((unsigned int) clock());
+    flint_rand_set_seed(rand_state, rand(), rand());
+
+    nmod_phi_T(phi1, phi2, CT, PT, Delta, rand_state);
 
 
     if (nmod_poly_degree(phi1) == nmod_poly_degree(phi2))
@@ -2327,7 +2106,8 @@ slong nmod_algeq_to_diffeq_new(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, con
 
 
 
-    find_uv(U, V, phi1, CT, PT, Delta);
+    find_uv(U, V, phi1, CT, PT, Delta, rand_state);
+    flint_rand_clear(rand_state);
 
 
     nmod_poly_mat_t NN,DD;

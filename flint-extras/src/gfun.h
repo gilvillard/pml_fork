@@ -118,10 +118,11 @@ void nmod_apply_T(nmod_poly_mat_t  RT, const nmod_poly_mat_t AT, const nmod_poly
  *   -----------------------------------------------------------
  *
  *    using one (resp. two) random constant combination(s) of the columns of
- *    T; see algeqtodiffeq.c for the full derivation, the width-1 dependency,
- *    and the caller-supplied `state` convention (nmod_phi1 was cleaned up on
- *    2026-09; nmod_phi_T -- which also computes phi2 -- has not been yet,
- *    and keeps its own internal, unseeded flint_rand_t for now).
+ *    T; see algeqtodiffeq.c for the full derivation (both moved/cleaned up
+ *    2026-09), the width-1 dependency, and the caller-supplied `state`
+ *    convention. deg(phi1)==deg(phi2) is the width(T)<=1 check used by
+ *    nmod_algeq_to_diffeq_new -- see nmod_phi_T's own doc in
+ *    algeqtodiffeq.c and claude-pseudoKrylov/todo.md.
  *
  *    r is assumed >= 3 for phi2 (nmod_phi_T only) ?
  *
@@ -132,19 +133,26 @@ void nmod_phi1(nmod_poly_t  phi1, const nmod_poly_mat_t CT, \
                      flint_rand_t state);
 
 void nmod_phi_T(nmod_poly_t  phi1, nmod_poly_t  phi2, const nmod_poly_mat_t CT, \
-                     const nmod_poly_mat_t PT, const nmod_poly_t Delta);
+                     const nmod_poly_mat_t PT, const nmod_poly_t Delta, \
+                     flint_rand_t state);
 
 
 /** Common algeqtodiffeq driver setup, factored out 2026-09 (see
- *  algeqtodiffeq.c for the full doc on both): nmod_algeqtodiffeq_setup
+ *  algeqtodiffeq.c for the full doc on each): nmod_algeqtodiffeq_setup
  *  builds Delta/iPyT/CT (Delta-scaled) from P alone;
- *  nmod_algeqtodiffeq_rescale_by_phi1 optionally rescales CT to be
- *  phi1-scaled instead, for drivers that want that (computes phi1 as a
- *  side effect, since a caller wanting the rescale needs phi1 anyway).
+ *  nmod_algeqtodiffeq_rescale_CT_by_phi1 rescales CT in place given an
+ *  already-known phi1; nmod_algeqtodiffeq_rescale_by_phi1 additionally
+ *  computes phi1 itself (nmod_phi1) first, for a caller that doesn't
+ *  already have it.
  */
 
 void nmod_algeqtodiffeq_setup(nmod_poly_t Delta, nmod_poly_mat_t iPyT,
                                nmod_poly_mat_t CT, const nmod_poly_mat_t PT);
+
+void nmod_algeqtodiffeq_rescale_CT_by_phi1(nmod_poly_mat_t CT,
+                                            const nmod_poly_mat_t PT,
+                                            const nmod_poly_t Delta,
+                                            const nmod_poly_t phi1);
 
 void nmod_algeqtodiffeq_rescale_by_phi1(nmod_poly_t phi1, nmod_poly_mat_t CT,
                                          const nmod_poly_mat_t PT,
@@ -152,8 +160,21 @@ void nmod_algeqtodiffeq_rescale_by_phi1(nmod_poly_t phi1, nmod_poly_mat_t CT,
                                          flint_rand_t state);
 
 
+/** Rank-one decomposition (algos.pdf Lemma 3.3, Sec. 3.2) of T (width <= 1)
+ *  -- the width-1 family's own counterpart to nmod_phi1 (both a
+ *  random-projection Monte Carlo construction, both exploit the same
+ *  width-1 structure). Implementation in algeqtodiffeq_width1.c. Cleaned
+ *  up 2026-09-15: takes an explicit flint_rand_t (see nmod_phi1's own doc
+ *  for why); internally rescales its own local working copy of CT via
+ *  nmod_algeqtodiffeq_rescale_CT_by_phi1 once, rather than the
+ *  per-column-then-divide-by-Delta/phi1 pattern the draft used (same
+ *  Delta-scale-vs-phi1-scale distinction as nmod_pseudo_Krylov vs.
+ *  nmod_pseudo_Krylov_naive) -- CT/Delta/phi1 themselves are unchanged in
+ *  meaning and are still passed in Delta-scaled, exactly as before.
+ */
 void find_uv(nmod_poly_mat_t U, nmod_poly_mat_t V, const nmod_poly_t  phi1, const nmod_poly_mat_t CT, \
-                     const nmod_poly_mat_t PT, const nmod_poly_t Delta);
+                     const nmod_poly_mat_t PT, const nmod_poly_t Delta, \
+                     flint_rand_t state);
 
 /**  Includes simplication to have phi1 at denominator 
  */

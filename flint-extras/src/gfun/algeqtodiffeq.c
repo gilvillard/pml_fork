@@ -395,17 +395,47 @@ void nmod_algeqtodiffeq_setup(nmod_poly_t Delta, nmod_poly_mat_t iPyT,
 }
 
 
-/** Second-stage setup, for drivers that want a phi1-scaled CT rather than
- *  a Delta-scaled one (2026-09, factored out alongside
- *  nmod_algeqtodiffeq_setup -- see that function's doc). Computes phi1
- *  (nmod_phi1) and rescales CT in place: CT := CT / (Delta/phi1), exact
- *  because T has width <= 1 (same argument as nmod_phi1 itself -- every
- *  entry of Delta*T, not just the single random column nmod_phi1
+/** Rescales CT in place given an ALREADY KNOWN phi1: CT := CT / (Delta/phi1),
+ *  exact because T has width <= 1 (same argument as nmod_phi1 itself --
+ *  every entry of Delta*T, not just the single random column nmod_phi1
  *  inspects, shares the same Delta/phi1 factor). After this call,
  *  nmod_apply_T(., a, CT, PT, D) computes phi1*T(a), not Delta*T(a) --
  *  callers must size D accordingly (smaller than
  *  nmod_gfun_delta_T_degree_bound would give, since phi1 can be a proper
  *  divisor of Delta).
+ *
+ *  Split out (2026-09-15) from nmod_algeqtodiffeq_rescale_by_phi1 below,
+ *  which computes phi1 itself via nmod_phi1 -- for a caller that already
+ *  has phi1 in hand (e.g. find_uv, algeqtodiffeq_width1.c, which receives
+ *  it as a parameter rather than computing it), calling the full
+ *  rescale_by_phi1 would redundantly recompute it via another random
+ *  projection.
+ */
+void nmod_algeqtodiffeq_rescale_CT_by_phi1(nmod_poly_mat_t CT,
+                                            const nmod_poly_mat_t PT,
+                                            const nmod_poly_t Delta,
+                                            const nmod_poly_t phi1)
+{
+    ulong prime = nmod_poly_mat_modulus(PT);
+    slong r = (PT->r) - 1;
+
+    nmod_poly_t g;
+    nmod_poly_init(g, prime);
+    nmod_poly_div(g, Delta, phi1);
+
+    for (slong i = 0; i < r; i++)
+        nmod_poly_div(nmod_poly_mat_entry(CT, i, 0), nmod_poly_mat_entry(CT, i, 0), g);
+
+    nmod_poly_clear(g);
+}
+
+
+/** Second-stage setup, for drivers that want a phi1-scaled CT rather than
+ *  a Delta-scaled one (2026-09, factored out alongside
+ *  nmod_algeqtodiffeq_setup -- see that function's doc). Computes phi1
+ *  (nmod_phi1) and rescales CT in place via
+ *  nmod_algeqtodiffeq_rescale_CT_by_phi1 above -- see that function's doc
+ *  for the rescale itself.
  *
  *  `phi1` must be nmod_poly_init'd by the caller (matches nmod_phi1's own
  *  convention) -- unlike nmod_algeqtodiffeq_setup's outputs, phi1 is
@@ -418,17 +448,108 @@ void nmod_algeqtodiffeq_rescale_by_phi1(nmod_poly_t phi1, nmod_poly_mat_t CT,
                                          const nmod_poly_t Delta,
                                          flint_rand_t state)
 {
+    nmod_phi1(phi1, CT, PT, Delta, state);
+    nmod_algeqtodiffeq_rescale_CT_by_phi1(CT, PT, Delta, phi1);
+}
+
+
+/** Randomized computation of phi1 AND phi2 (algos.pdf Sec. 3.1's
+ *  determinantal-denominator sequence phi_1 | phi_2 | ...): phi1 exactly
+ *  as nmod_phi1 (one random column of Delta*T, gcd with Delta); phi2 the
+ *  same idea one determinantal level up -- a random 2x2 "minor" of
+ *  Delta*T, sampled via two random columns (two applications of
+ *  nmod_apply_T) and two random row combinations, gcd'd with Delta the
+ *  same way. Moved here 2026-09-15, next to nmod_phi1 (its natural
+ *  sibling), takes an explicit flint_rand_t for the same reason -- not
+ *  otherwise cleaned up (the algorithm/structure is unchanged from the
+ *  draft; only nmod_phi1 itself has had a full pass so far).
+ *
+ *  Why this checks width(T) <= 1: phi_1 | phi_2 always (Sec. 3.1), with
+ *  equality iff width(T) <= 1 (the width is the first index where the
+ *  determinantal-denominator sequence stops growing). So `deg(phi1) ==
+ *  deg(phi2)` (comparing degrees, as nmod_algeq_to_diffeq_new already
+ *  does with this function's output) is a direct, meaningful width-1
+ *  check -- confirmed empirically 2026-09-15 while testing find_uv: for a
+ *  P where this comparison disagrees, find_uv's rank-one reconstruction
+ *  was verified (via a direct 2x2-minors check on an independently built
+ *  reference matrix) to fail 100% of the time, deterministically, exactly
+ *  as expected for a genuine width > 1 instance -- not a bug in find_uv,
+ *  a violated precondition. Per the user: width <= 1 is only a generic
+ *  property of algeqtodiffeq's T, never guaranteed for a given P; nothing
+ *  in the current code (this function included) aborts or falls back
+ *  when it fails to hold -- nmod_algeq_to_diffeq_new only prints a
+ *  message. See claude-pseudoKrylov/todo.md.
+ *
+ *  r is assumed >= 3 for phi2 to be meaningful (a 2x2 minor needs at
+ *  least 2 independent row/column directions distinct from whatever phi1
+ *  already used) -- not checked here, matches the draft.
+ */
+void nmod_phi_T(nmod_poly_t phi1, nmod_poly_t phi2, const nmod_poly_mat_t CT,
+                const nmod_poly_mat_t PT, const nmod_poly_t Delta,
+                flint_rand_t state)
+{
     ulong prime = nmod_poly_mat_modulus(PT);
     slong r = (PT->r) - 1;
+    slong d = nmod_poly_mat_degree(PT);
+    slong D = nmod_gfun_delta_T_degree_bound(r, d);
 
-    nmod_phi1(phi1, CT, PT, Delta, state);
+    nmod_poly_mat_t randT1, randT2;
+    nmod_poly_mat_init(randT1, r, 1, prime);
+    nmod_poly_mat_init(randT2, r, 1, prime);
+    for (slong i = 0; i < r; i++)
+    {
+        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT1, i, 0), 0, n_randbits(state, FLINT_BITS - 2));
+        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT2, i, 0), 0, n_randbits(state, FLINT_BITS - 2));
+    }
+
+    nmod_poly_mat_t colT1, colT2;
+    nmod_poly_mat_init(colT1, r, 1, prime);
+    nmod_poly_mat_init(colT2, r, 1, prime);
+    nmod_apply_T(colT1, randT1, CT, PT, D);
+    nmod_apply_T(colT2, randT2, CT, PT, D);
 
     nmod_poly_t g;
     nmod_poly_init(g, prime);
-    nmod_poly_div(g, Delta, phi1);
+    nmod_poly_gcd_hgcd(g, nmod_poly_mat_entry(colT1, 0, 0), Delta);
+    for (slong i = 1; i < r; i++)
+        nmod_poly_gcd_hgcd(g, g, nmod_poly_mat_entry(colT1, i, 0));
+    nmod_poly_div(phi1, Delta, g);
 
+    /* phi2: a random 2x2 minor of Delta*T, via two random row
+     * combinations (randU) applied to the same two random columns above. */
+    nmod_poly_mat_t randU;
+    nmod_poly_mat_init(randU, 2, r, prime);
     for (slong i = 0; i < r; i++)
-        nmod_poly_div(nmod_poly_mat_entry(CT, i, 0), nmod_poly_mat_entry(CT, i, 0), g);
+    {
+        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randU, 0, i), 0, n_randtest(state) % prime);
+        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randU, 1, i), 0, n_randtest(state) % prime);
+    }
+
+    nmod_poly_mat_t P1, P2;
+    nmod_poly_mat_init(P1, 2, 1, prime);
+    nmod_poly_mat_init(P2, 2, 1, prime);
+    nmod_poly_mat_mul(P1, randU, colT1);
+    nmod_poly_mat_mul(P2, randU, colT2);
+
+    nmod_poly_t tp1, tp2;
+    nmod_poly_init(tp1, prime);
+    nmod_poly_init(tp2, prime);
+    nmod_poly_mul(tp1, nmod_poly_mat_entry(P1, 0, 0), nmod_poly_mat_entry(P2, 1, 0));
+    nmod_poly_mul(tp2, nmod_poly_mat_entry(P1, 1, 0), nmod_poly_mat_entry(P2, 0, 0));
+    nmod_poly_sub(tp1, tp1, tp2);
+
+    nmod_poly_div(tp1, tp1, Delta);
+    nmod_poly_gcd_hgcd(g, tp1, Delta);
+    nmod_poly_div(phi2, Delta, g);
 
     nmod_poly_clear(g);
+    nmod_poly_clear(tp1);
+    nmod_poly_clear(tp2);
+    nmod_poly_mat_clear(randT1);
+    nmod_poly_mat_clear(randT2);
+    nmod_poly_mat_clear(colT1);
+    nmod_poly_mat_clear(colT2);
+    nmod_poly_mat_clear(randU);
+    nmod_poly_mat_clear(P1);
+    nmod_poly_mat_clear(P2);
 }
