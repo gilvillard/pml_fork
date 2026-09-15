@@ -1,5 +1,5 @@
 /* 
-   Copyright (C) 2024 Gilles Villard
+   Copyright (C) 2024-2026 Gilles Villard
 
    This file is part of mapml. mapml is free software: you
    can redistribute it and/or modify it under the terms of the GNU Lesser
@@ -723,11 +723,13 @@ ALGEB pm_nullspace(MKernelVector kv, ALGEB *args){
 
 // The polynomial in input is a vector of polynomials in x 
 
-ALGEB pm_algeq2diffeq_series(MKernelVector kv, ALGEB *args){
+/* args[2] is n, the pseudo-Krylov matrix width, passed straight through to
+ * nmod_algeq_to_diffeq_naive */
+ALGEB pm_algeq2diffeq_naive(MKernelVector kv, ALGEB *args){
 
     ALGEB vectmat=args[1];
 
-    ulong k  = MapleToInteger64(kv,args[2]);
+    ulong n  = MapleToInteger64(kv,args[2]);
 
     ulong modulus = MapleToInteger64(kv,args[3]);
 
@@ -736,16 +738,12 @@ ALGEB pm_algeq2diffeq_series(MKernelVector kv, ALGEB *args){
 
     get_nmod_poly_mat(PT, modulus, kv, vectmat);
 
-    slong r = (PT ->r) -1;
-
-    ulong n = r+k;
-
     nmod_poly_mat_t LT;
-    nmod_poly_mat_init(LT,n,n,modulus); 
+    nmod_poly_mat_init(LT,n,n,modulus);
 
     slong nz;
 
-    nz=nmod_algeq_to_diffeq_series(LT, PT, k); 
+    nz=nmod_algeq_to_diffeq_naive(LT, PT, n);
 
     nmod_poly_mat_t kernz;
     nmod_poly_mat_window_init(kernz, LT, 0, 0, n, nz);
@@ -762,11 +760,15 @@ ALGEB pm_algeq2diffeq_series(MKernelVector kv, ALGEB *args){
 
 }
 
-ALGEB pm_algeq2diffeq_rank1(MKernelVector kv, ALGEB *args){
+// The polynomial in input is a vector of polynomials in x 
+
+/* args[2] is n -- see pm_algeq2diffeq_naive's header comment, same
+ * convention here. */
+ALGEB pm_algeq2diffeq_series(MKernelVector kv, ALGEB *args){
 
     ALGEB vectmat=args[1];
 
-    ulong k  = MapleToInteger64(kv,args[2]);
+    ulong n  = MapleToInteger64(kv,args[2]);
 
     ulong modulus = MapleToInteger64(kv,args[3]);
 
@@ -775,16 +777,49 @@ ALGEB pm_algeq2diffeq_rank1(MKernelVector kv, ALGEB *args){
 
     get_nmod_poly_mat(PT, modulus, kv, vectmat);
 
-    slong r = (PT ->r) -1;
-
-    ulong n = r+k;
-
     nmod_poly_mat_t LT;
-    nmod_poly_mat_init(LT,n,n,modulus); 
+    nmod_poly_mat_init(LT,n,n,modulus);
 
     slong nz;
 
-    nz=nmod_algeq_to_diffeq_new(LT, PT, k); 
+    nz=nmod_algeq_to_diffeq_series(LT, PT, n);
+
+    nmod_poly_mat_t kernz;
+    nmod_poly_mat_window_init(kernz, LT, 0, 0, n, nz);
+
+   
+    ALGEB res= MapleListAlloc(kv,2);
+    MapleListAssign(kv,res,1,ToMapleInteger(kv,nz));
+    MapleListAssign(kv,res,2,nmod_poly_mat_to_algeb(kv,kernz));
+
+    nmod_poly_mat_clear(LT);
+    nmod_poly_mat_window_clear(kernz);
+
+    return res;
+
+}
+
+/* args[2] is n -- see pm_algeq2diffeq_naive's header comment, same
+ * convention here. */
+ALGEB pm_algeq2diffeq_rank1(MKernelVector kv, ALGEB *args){
+
+    ALGEB vectmat=args[1];
+
+    ulong n  = MapleToInteger64(kv,args[2]);
+
+    ulong modulus = MapleToInteger64(kv,args[3]);
+
+
+    nmod_poly_mat_t PT;
+
+    get_nmod_poly_mat(PT, modulus, kv, vectmat);
+
+    nmod_poly_mat_t LT;
+    nmod_poly_mat_init(LT,n,n,modulus);
+
+    slong nz;
+
+    nz=nmod_algeq_to_diffeq_new(LT, PT, n);
 
     nmod_poly_mat_t kernz;
     nmod_poly_mat_window_init(kernz, LT, 0, 0, n, nz);

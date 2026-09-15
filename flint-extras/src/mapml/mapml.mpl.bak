@@ -34,7 +34,7 @@ mapml:= module()
 			`mod/PMBasis`,`mod/RowPMBasis`,
 			`mod/RightDescription`,`mod/LeftDescription`,
 			`mod/Kernel`,`mod/RowKernel`,`mod/PMNullspace`,`mod/Algeq2diffeqSeries`,
-			`mod/Algeq2diffeqRank1`;
+			`mod/Algeq2diffeqNaive`,`mod/Algeq2diffeqRank1`;
 
 	option package, load=Init, unload=End: 
 	
@@ -68,7 +68,7 @@ mapml:= module()
     printf("external %s\n",pml_lib);
 	ff:=define_external("nmod_poly_mat_init", MAPLE, LIB = pml_lib):
 
-	printf("[MDeterminant, WeakPopov, RowWeakPopov, PMBasis, MBasis, RowPMBasis, RowMBasis,RightDescription, LeftDescription, Kernel, RowKernel, PMNullspace, Algeq2diffeqSeries,Algeq2diffeqRank1]");
+	printf("[MDeterminant, WeakPopov, RowWeakPopov, PMBasis, MBasis, RowPMBasis, RowMBasis,RightDescription, LeftDescription, Kernel, RowKernel, PMNullspace, Algeq2diffeqNaive, Algeq2diffeqSeries, Algeq2diffeqRank1]");
 		
 
 	# Local functions for conversions
@@ -91,7 +91,7 @@ mapml:= module()
 	    description "YYY";
 
 		export polynomial_rt,polymat_rt, matpoly_rt, pm_determinant, pm_diff_mbasis, pm_matrix_mbasis, pm_matrix_pmbasis,pm_coeffs,pm_weakpopov,pm_kernel,pm_row_kernel,pm_nullspace,pm_algeq2diffeq_series,
-		pm_algeq2diffeq_rank1;					
+		pm_algeq2diffeq_rank1,pm_algeq2diffeq_naive;					
 
 		polynomial_rt := define_external("polynomial_rt",MAPLE, LIB = mapml_lib);
 
@@ -120,6 +120,8 @@ mapml:= module()
 		pm_algeq2diffeq_series := define_external("pm_algeq2diffeq_series",MAPLE, LIB = mapml_lib);
 
 		pm_algeq2diffeq_rank1 := define_external("pm_algeq2diffeq_rank1",MAPLE, LIB = mapml_lib);
+
+		pm_algeq2diffeq_naive := define_external("pm_algeq2diffeq_naive",MAPLE, LIB = mapml_lib);
 
 	end module: 	
 
@@ -248,51 +250,81 @@ mapml:= module()
 		 
 	end proc: 
 
-
-	`mod/Algeq2diffeqSeries`:=proc(P,x,y,k,q) local dy, i, A, t, vect_A,res; 
-
-		dy:=degree(P,y);
-
-		A:=Matrix(dy+1,1);
-
-		for i from 0 to dy do 
-			A[i+1,1]:=coeff(P,y,i): 
-		od: 
-
-		A:=map(t->modp(expand(t),q),A);
-
-		vect_A:=map(t->PolynomialTools:-CoefficientVector(t,x),A); 
-
-		res:=Dev:-pm_algeq2diffeq_series(vect_A, k, q);
-		
-		res := map(t->PolynomialTools:-FromCoefficientList(t, x), res[2]);
-
-		return res; 
-		 
-	end proc: 
-
-
-	`mod/Algeq2diffeqRank1`:=proc(P,x,y,k,q) local dy, i, A, t, vect_A,res; 
+	# n: pseudo-Krylov matrix width, passed straight through to the C side --
+	# NOT "extra columns beyond r". Guaranteed to find a relation for
+	# n >= r+1 (the generic case: use r+1 for one solution); may already
+	# find one for smaller n on non-generic P (a lower-order relation);
+	# larger n beyond r+1 trades construction cost for a lower-degree
+	# solution. A caller wanting the old "r + margin" convenience can pass
+	# r+k themselves (r = degree(P,y)). See claude-pseudoKrylov/todo.md.
+	`mod/Algeq2diffeqNaive`:=proc(P,x,y,n,q) local dy, i, A, t, vect_A,res;
 
 		dy:=degree(P,y);
 
 		A:=Matrix(dy+1,1);
 
-		for i from 0 to dy do 
-			A[i+1,1]:=coeff(P,y,i): 
-		od: 
+		for i from 0 to dy do
+			A[i+1,1]:=coeff(P,y,i):
+		od:
 
 		A:=map(t->modp(expand(t),q),A);
 
-		vect_A:=map(t->PolynomialTools:-CoefficientVector(t,x),A); 
+		vect_A:=map(t->PolynomialTools:-CoefficientVector(t,x),A);
 
-		res:=Dev:-pm_algeq2diffeq_rank1(vect_A, k, q);
-		
+		res:=Dev:-pm_algeq2diffeq_naive(vect_A, n, q);
+
 		res := map(t->PolynomialTools:-FromCoefficientList(t, x), res[2]);
 
-		return res; 
-		 
-	end proc: 
+		return res;
+
+	end proc:
+
+	# n: see Algeq2diffeqNaive's comment above, same convention here.
+	`mod/Algeq2diffeqSeries`:=proc(P,x,y,n,q) local dy, i, A, t, vect_A,res;
+
+		dy:=degree(P,y);
+
+		A:=Matrix(dy+1,1);
+
+		for i from 0 to dy do
+			A[i+1,1]:=coeff(P,y,i):
+		od:
+
+		A:=map(t->modp(expand(t),q),A);
+
+		vect_A:=map(t->PolynomialTools:-CoefficientVector(t,x),A);
+
+		res:=Dev:-pm_algeq2diffeq_series(vect_A, n, q);
+
+		res := map(t->PolynomialTools:-FromCoefficientList(t, x), res[2]);
+
+		return res;
+
+	end proc:
+
+
+	# n: see Algeq2diffeqNaive's comment above, same convention here.
+	`mod/Algeq2diffeqRank1`:=proc(P,x,y,n,q) local dy, i, A, t, vect_A,res;
+
+		dy:=degree(P,y);
+
+		A:=Matrix(dy+1,1);
+
+		for i from 0 to dy do
+			A[i+1,1]:=coeff(P,y,i):
+		od:
+
+		A:=map(t->modp(expand(t),q),A);
+
+		vect_A:=map(t->PolynomialTools:-CoefficientVector(t,x),A);
+
+		res:=Dev:-pm_algeq2diffeq_rank1(vect_A, n, q);
+
+		res := map(t->PolynomialTools:-FromCoefficientList(t, x), res[2]);
+
+		return res;
+
+	end proc:
 
 
 	# TODO modp

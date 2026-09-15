@@ -56,408 +56,17 @@ void mat_to_xy(nmod_mpoly_t P, nmod_mpoly_ctx_t ctx, const nmod_poly_mat_t PT)
 }
 
 
-/**  Resultant of P and the derivative Py, and the inverse of Py mod P times the resultant 
- *     as poly_mat
- *    deg_y P = r, hence PT has r+1 rows 
- */
+/* nmod_biv_resultant_geometric has moved to resultant.c -- a mechanical
+ * relocation only (2026-09), not yet a cleanup pass; see gfun.h and
+ * claude-pseudoKrylov/todo.md item 11 (an unaddressed correctness gap noted
+ * there, not fixed). */
 
-void nmod_biv_resultant_geometric(nmod_poly_t Delta, nmod_poly_mat_t  iPyT, const nmod_poly_mat_t PT)
-{
 
-    ulong prime;
-    prime = nmod_poly_mat_modulus(PT);
 
-    nmod_t mod;
-    nmod_geometric_progression_t F;
 
-    ulong L;
-    ulong w;
-
-    slong r;
-    r = (PT->r)-1;
-
-    slong d;
-    d = nmod_poly_mat_degree(PT);
-
-
-    // Bound on the degree of the resultant + 1
-    L = (2*r-1)*d+1;  
-    nmod_init(&mod, prime);
-
-    w = nmod_find_root(2*L, mod);
-    nmod_geometric_progression_init(F, w, L, mod);
-
-
-    int i,j;
-
-    nn_ptr val[r+1];
-
-    for (j=0; j<r+1; j++) 
-    {
-        val[j] = _nmod_vec_init(L);
-    }
-
-    /** 
-     * Evaluation loop on the r+1 coeffs j in y
-     *   generates a univariate polynomial evalP[i] in y 
-     * 
-     *  rather make a loop on the vals ? 
-     */
-
-    for (j=0; j<r+1; j++) 
-    {
-        _nmod_poly_evaluate_geometric_nmod_vec_fast_precomp(val[j], (nmod_poly_mat_entry(PT, j, 0))->coeffs,\
-                                                            (nmod_poly_mat_entry(PT, j, 0))->length, F, L, mod);
-    }
-
-    // Reconstruction of the L polynomials in y 
-    //   having segmentation fault with nmod_poly_t evalP[L]; (to see, ?)
-
-    nmod_poly_mat_t  evalP;
-    nmod_poly_mat_init(evalP,L,1,prime);
-
-    for (i=0; i<L; i++) 
-    {
-        for (j=0; j<r+1; j++) 
-        {
-            nmod_poly_set_coeff_ui(nmod_poly_mat_entry(evalP, i, 0), j, val[j][i]);
-        }
-    }
-
-    /**
-     *  Loop on the L values for the L resultants and inverses 
-     */
-
-    nn_ptr evalR;
-    evalR = _nmod_vec_init(L);
-
-    // Evaluations of the inverse mod P times the resultant, polynomials i in y  
-
-    nmod_poly_mat_t  evaliPy;
-    nmod_poly_mat_init(evaliPy,L,1,prime);
-
-    nmod_poly_t evalPy;
-    nmod_poly_init(evalPy,prime);
-
-    for (i=0; i<L; i++) 
-    {
-        nmod_poly_derivative(evalPy, nmod_poly_mat_entry(evalP, i, 0));
-
-        evalR[i] = nmod_poly_resultant(nmod_poly_mat_entry(evalP, i, 0),evalPy);
-        
-        nmod_poly_invmod(nmod_poly_mat_entry(evaliPy, i, 0),\
-                        evalPy,\
-                        nmod_poly_mat_entry(evalP, i, 0)); // Todo together with the resultant
-
-        nmod_poly_scalar_mul_nmod(nmod_poly_mat_entry(evaliPy, i, 0),\
-                                    nmod_poly_mat_entry(evaliPy, i, 0), evalR[i]);
-    }
-
-
-    // Interpolation: the resultant 
-
-    nmod_poly_interpolate_geometric_nmod_vec_fast_precomp(Delta, evalR, F, L);
-
-
-    // Interpolation: the inverse of Py times the resultant 
-
-    nn_ptr tvals;
-    tvals = _nmod_vec_init(L);
-
-    for (j=0; j<r; j++)
-    {
-        // vals for the coeff i in x 
-        for (i=0; i<L; i++) 
-        {
-            tvals[i] = nmod_poly_get_coeff_ui(nmod_poly_mat_entry(evaliPy, i, 0),j); 
-        }
-
-        nmod_poly_interpolate_geometric_nmod_vec_fast_precomp(nmod_poly_mat_entry(iPyT, j, 0), tvals, F, L);
-    }
-
-
-    nmod_geometric_progression_clear(F);
-    _nmod_vec_clear(evalR);
-    nmod_poly_mat_clear(evalP);
-    nmod_poly_mat_clear(evaliPy);
-    nmod_poly_clear(evalPy);
-}    
-
-
-
-
-/** Geometric bivariate multiplication A*B mod P, with respect to y 
- *    the geometric progression is initialized outside
- * 
- *   The memainder is known - in advance - to be a polynomial of x-degree at most D
- *    the geometric progression is driven by D
- * 
- *   To see: aliasing?
- */
-
-void nmod_biv_mulmod_geometric(nmod_poly_mat_t  RT, const nmod_poly_mat_t AT, const nmod_poly_mat_t BT, \
-                                const nmod_poly_mat_t PT,  const ulong D)
-{
-
-    ulong prime;
-    prime = nmod_poly_mat_modulus(PT);
-
-    nmod_t mod;
-    nmod_geometric_progression_t F;
-
-    ulong L;
-    ulong w;
-
-    L = D+1;  
-    nmod_init(&mod, prime);
-
-    w = nmod_find_root(2*L, mod);
-    nmod_geometric_progression_init(F, w, L, mod);
-
-    int i,j;
-
-    slong r = PT->r;
-    slong ra = AT->r;
-    slong rb = BT->r;
-
-
-    slong rr = FLINT_MAX(r, FLINT_MAX(ra, rb));
-
-    nn_ptr val[rr+1];
-
-    for (j=0; j<rr+1; j++) 
-    {
-        val[j] = _nmod_vec_init(L);
-    }
-
-    /** 
-     * Evaluations  
-     *  rather make a loop on the vals ? 
-     */
-
-    // ========  P 
-    for (j=0; j<r; j++) 
-    {
-        _nmod_poly_evaluate_geometric_nmod_vec_fast_precomp(val[j], (nmod_poly_mat_entry(PT, j, 0))->coeffs,\
-                                                            (nmod_poly_mat_entry(PT, j, 0))->length, F, L, mod);
-    }
-
-    // Reconstruction of the L polynomials in y 
-    nmod_poly_mat_t  evalP;
-    nmod_poly_mat_init(evalP,L,1,prime);
-
-    for (i=0; i<L; i++) 
-    {
-        for (j=0; j<r; j++) 
-        {
-            nmod_poly_set_coeff_ui(nmod_poly_mat_entry(evalP, i, 0), j, val[j][i]);
-        }
-    }
-
-
-    // ========  A
-    for (j=0; j<ra; j++) 
-    {
-        _nmod_poly_evaluate_geometric_nmod_vec_fast_precomp(val[j], (nmod_poly_mat_entry(AT, j, 0))->coeffs,\
-                                                            (nmod_poly_mat_entry(AT, j, 0))->length, F, L, mod);
-    }
-
-    // Reconstruction of the L polynomials in y 
-    nmod_poly_mat_t  evalA;
-    nmod_poly_mat_init(evalA,L,1,prime);
-
-    for (i=0; i<L; i++) 
-    {
-        for (j=0; j<ra; j++) 
-        {
-            nmod_poly_set_coeff_ui(nmod_poly_mat_entry(evalA, i, 0), j, val[j][i]);
-        }
-    }
-
-    // ========  B
-    for (j=0; j<rb; j++) 
-    {
-        _nmod_poly_evaluate_geometric_nmod_vec_fast_precomp(val[j], (nmod_poly_mat_entry(BT, j, 0))->coeffs,\
-                                                            (nmod_poly_mat_entry(BT, j, 0))->length, F, L, mod);
-    }
-
-    // Reconstruction of the L polynomials in y 
-    nmod_poly_mat_t  evalB;
-    nmod_poly_mat_init(evalB,L,1,prime);
-
-    for (i=0; i<L; i++) 
-    {
-        for (j=0; j<rb; j++) 
-        {
-            nmod_poly_set_coeff_ui(nmod_poly_mat_entry(evalB, i, 0), j, val[j][i]);
-        }
-    }
-
-
-    /**
-     *  Loop on the L values for the L resulting polynomials 
-     */
-
-    // Evaluations of the product modulo 
-
-    nmod_poly_mat_t  evalR;
-    nmod_poly_mat_init(evalR,L,1,prime);
-
-
-    for (i=0; i<L; i++) 
-    {
-
-        nmod_poly_mulmod(nmod_poly_mat_entry(evalR, i, 0), \
-                            nmod_poly_mat_entry(evalA, i, 0), \
-                            nmod_poly_mat_entry(evalB, i, 0), \
-                            nmod_poly_mat_entry(evalP, i, 0)); 
-    }
-
-
-    nn_ptr tvals;
-    tvals = _nmod_vec_init(L);
-
-    for (j=0; j<r-1; j++)
-    {
-        // vals for the coeff i in x 
-        for (i=0; i<L; i++) 
-        {
-            tvals[i] = nmod_poly_get_coeff_ui(nmod_poly_mat_entry(evalR, i, 0),j); 
-        }
-
-        nmod_poly_interpolate_geometric_nmod_vec_fast_precomp(nmod_poly_mat_entry(RT, j, 0), tvals, F, L);
-    }
-
-
-    for (j=0; j<rr+1; j++) 
-    {
-         _nmod_vec_clear(val[j]);
-    }
-    _nmod_vec_clear(tvals); 
-    nmod_geometric_progression_clear(F);
-    nmod_poly_mat_clear(evalA);
-    nmod_poly_mat_clear(evalB);
-    nmod_poly_mat_clear(evalP);
-    nmod_poly_mat_clear(evalR);
-}
-
-
-
-/** Linear transformation T for algeqtodiffeq 
- *   CT is C = -Px (Py)^(-1) that has been precomputed 
- * 
- *   The result is known - in advance - to be a polynomial of x-degree at most D
- *    the geometric progression is driven by D
- * 
- *   To see: aliasing?
- * 
- */
-
-void nmod_apply_T(nmod_poly_mat_t  RT, const nmod_poly_mat_t AT, const nmod_poly_mat_t CT, \
-                     const nmod_poly_mat_t PT, const ulong D)
-{
-    ulong prime;
-    prime = nmod_poly_mat_modulus(PT);
-
-    slong ra = AT->r;
-   
-    nmod_poly_mat_t  DAT;
-    nmod_poly_mat_init(DAT,ra,1,prime);
-
-     // Diff A 
-    for (int i=0; i<ra-1; i++)
-    {
-        nmod_poly_scalar_mul_nmod(nmod_poly_mat_entry(DAT, i, 0),nmod_poly_mat_entry(AT, i+1, 0),i+1);
-    }
-    nmod_poly_zero(nmod_poly_mat_entry(DAT, ra-1, 0)); 
-
-    nmod_biv_mulmod_geometric(RT, DAT, CT, PT, D); 
-
-    nmod_poly_mat_clear(DAT);
-}
-
-
-/**  Randomized Computation of phi_1 and phi_2
- *   -----------------------------------------
- * 
- *    Warning: not made monic 
- * 
- *    The row dimension of PT must be the y-degree of P, exactly 
- * 
- *    using two random constant combinations of the column of T 
- *    (r >= 2 for phi2) 
- * 
- *    To see: first colmun zero is a particular case ?
- * 
- */
-
-
-void nmod_phi1(nmod_poly_t  phi1, const nmod_poly_mat_t CT, \
-                     const nmod_poly_mat_t PT, const nmod_poly_t Delta)
-{
-
-    ulong prime;
-    prime = nmod_poly_mat_modulus(PT);
-
-    slong r = (PT->r)-1;
-
-    slong d;
-    d = nmod_poly_mat_degree(PT);
-
-    /** Bound on the output degree 
-     *   using a constant random column projection
-     */
-
-    slong D = (2*r-1)*d -1; // M^* and Y  (2r-2)d + (d-1)  
-
-    flint_rand_t state;
-    flint_rand_init(state);
-    srand(time(NULL));
-    flint_rand_set_seed(state, rand(), rand());
-
-
-    nmod_poly_mat_t randT;
-    nmod_poly_mat_init(randT,r,1,prime);
-
-    // Better than randtest matrix to be sure to have nonzero entries / Check nonzero ? 
-    for (int i=0; i<r; i++)
-    {
-        //nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT1, i, 0), 0, n_randtest(state) % prime);
-        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT, i, 0), 0, n_randbits(state,FLINT_BITS-2));
-    }
-
-    nmod_poly_mat_t  colT;
-    nmod_poly_mat_init(colT,r,1,prime);
-
-
-    nmod_apply_T(colT, randT, CT, PT, D); 
-   
-    nmod_poly_t g;
-    nmod_poly_init(g,prime); // re-used below 
-
-    nmod_poly_gcd_hgcd(g, nmod_poly_mat_entry(colT, 0, 0), Delta);
-
-    for (int i=1; i<r; i++)
-    {
-        nmod_poly_gcd_hgcd(g, g, nmod_poly_mat_entry(colT, i, 0));
-    }
-
-    nmod_poly_div(phi1,Delta,g);
-
-
-    flint_printf("\n   Properness of T simplified, deg num:  %ld   deg den: %ld\n",\
-                    nmod_poly_mat_degree(colT)-nmod_poly_degree(g),\
-                    nmod_poly_degree(phi1));
-
-    flint_rand_clear(state);
-
-    nmod_poly_clear(g);
-   
-
-    nmod_poly_mat_clear(randT);
-    nmod_poly_mat_clear(colT);
-}
-
+/* nmod_biv_mulmod_geometric, nmod_apply_T, and nmod_phi1 have moved to
+ * algeqtodiffeq.c (grouped there together, and nmod_phi1 cleaned up along
+ * the way -- see that file and gfun.h for the current declarations/docs). */
 
 
 void nmod_phi_T(nmod_poly_t  phi1, nmod_poly_t  phi2, const nmod_poly_mat_t CT, \
@@ -1344,7 +953,17 @@ slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const s
 
     ttime=clock();
 
-    nmod_phi1(phi1, CT, PT, Delta);
+    // TODO(cleanup): this driver still reseeds ad hoc per call, matching
+    // the rest of this file's (pre-existing, not yet cleaned) convention --
+    // see claude-pseudoKrylov/todo.md. nmod_phi1 itself no longer reseeds
+    // internally, so this is now the one place controlling its randomness.
+    flint_rand_t phi1_state;
+    flint_rand_init(phi1_state);
+    srand((unsigned int) clock()); // NOT time(NULL): this scope shadows time with a local double
+    flint_rand_set_seed(phi1_state, rand(), rand());
+
+    nmod_phi1(phi1, CT, PT, Delta, phi1_state);
+    flint_rand_clear(phi1_state);
 
     time = (double)(clock()-ttime) / CLOCKS_PER_SEC;
 
@@ -1556,7 +1175,17 @@ slong nmod_algeq_to_diffeq_phi1(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
 
     ttime=clock();
 
-    nmod_phi1(phi1, CT, PT, Delta);
+    // TODO(cleanup): this driver still reseeds ad hoc per call, matching
+    // the rest of this file's (pre-existing, not yet cleaned) convention --
+    // see claude-pseudoKrylov/todo.md. nmod_phi1 itself no longer reseeds
+    // internally, so this is now the one place controlling its randomness.
+    flint_rand_t phi1_state;
+    flint_rand_init(phi1_state);
+    srand((unsigned int) clock()); // NOT time(NULL): this scope shadows time with a local double
+    flint_rand_set_seed(phi1_state, rand(), rand());
+
+    nmod_phi1(phi1, CT, PT, Delta, phi1_state);
+    flint_rand_clear(phi1_state);
 
     time = (double)(clock()-ttime) / CLOCKS_PER_SEC;
 
@@ -2249,7 +1878,17 @@ slong nmod_algeq_to_diffeq_series_phi1(nmod_poly_mat_t LT, const nmod_poly_mat_t
 
     ttime=clock();
 
-    nmod_phi1(phi1, CT, PT, Delta);
+    // TODO(cleanup): this driver still reseeds ad hoc per call, matching
+    // the rest of this file's (pre-existing, not yet cleaned) convention --
+    // see claude-pseudoKrylov/todo.md. nmod_phi1 itself no longer reseeds
+    // internally, so this is now the one place controlling its randomness.
+    flint_rand_t phi1_state;
+    flint_rand_init(phi1_state);
+    srand((unsigned int) clock()); // NOT time(NULL): this scope shadows time with a local double
+    flint_rand_set_seed(phi1_state, rand(), rand());
+
+    nmod_phi1(phi1, CT, PT, Delta, phi1_state);
+    flint_rand_clear(phi1_state);
 
     time = (double)(clock()-ttime) / CLOCKS_PER_SEC;
     flint_printf("\n   time phi1: %.3f sec.\n", time);
@@ -3808,7 +3447,17 @@ slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, co
 
 
     //nmod_phi_T(phi1, phi2, CT, PT, Delta);
-    nmod_phi1(phi1, CT, PT, Delta);
+    // TODO(cleanup): this driver still reseeds ad hoc per call, matching
+    // the rest of this file's (pre-existing, not yet cleaned) convention --
+    // see claude-pseudoKrylov/todo.md. nmod_phi1 itself no longer reseeds
+    // internally, so this is now the one place controlling its randomness.
+    flint_rand_t phi1_state;
+    flint_rand_init(phi1_state);
+    srand((unsigned int) clock()); // NOT time(NULL): this scope shadows time with a local double
+    flint_rand_set_seed(phi1_state, rand(), rand());
+
+    nmod_phi1(phi1, CT, PT, Delta, phi1_state);
+    flint_rand_clear(phi1_state);
 
     time = (double)(clock()-ttime) / CLOCKS_PER_SEC;
     flint_printf("\n   time precomputation: %.3f sec.\n", time);
@@ -4134,7 +3783,17 @@ slong nmod_algeq_to_diffeq_last_phi1(nmod_poly_mat_t LT, const nmod_poly_mat_t P
 
 
     //nmod_phi_T(phi1, phi2, CT, PT, Delta);
-    nmod_phi1(phi1, CT, PT, Delta);
+    // TODO(cleanup): this driver still reseeds ad hoc per call, matching
+    // the rest of this file's (pre-existing, not yet cleaned) convention --
+    // see claude-pseudoKrylov/todo.md. nmod_phi1 itself no longer reseeds
+    // internally, so this is now the one place controlling its randomness.
+    flint_rand_t phi1_state;
+    flint_rand_init(phi1_state);
+    srand((unsigned int) clock()); // NOT time(NULL): this scope shadows time with a local double
+    flint_rand_set_seed(phi1_state, rand(), rand());
+
+    nmod_phi1(phi1, CT, PT, Delta, phi1_state);
+    flint_rand_clear(phi1_state);
 
     time = (double)(clock()-ttime) / CLOCKS_PER_SEC;
     flint_printf("\n   time precomputation: %.3f sec.\n", time);

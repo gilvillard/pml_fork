@@ -163,6 +163,8 @@ ALGEB pm_row_kernel(MKernelVector kv, ALGEB *args);
 // Flint procedure 
 ALGEB pm_nullspace(MKernelVector kv, ALGEB *args);
 
+ALGEB pm_algeq2diffeq_naive(MKernelVector kv, ALGEB *args);
+
 ALGEB pm_algeq2diffeq_series(MKernelVector kv, ALGEB *args);
 
 ALGEB pm_algeq2diffeq_rank1(MKernelVector kv, ALGEB *args);
