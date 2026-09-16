@@ -801,7 +801,7 @@ ALGEB pm_algeq2diffeq_series(MKernelVector kv, ALGEB *args){
 
 /* args[2] is n -- see pm_algeq2diffeq_naive's header comment, same
  * convention here. */
-ALGEB pm_algeq2diffeq_rank1(MKernelVector kv, ALGEB *args){
+ALGEB pm_algeq2diffeq_width1(MKernelVector kv, ALGEB *args){
 
     ALGEB vectmat=args[1];
 
@@ -819,7 +819,7 @@ ALGEB pm_algeq2diffeq_rank1(MKernelVector kv, ALGEB *args){
 
     slong nz;
 
-    nz=nmod_algeq_to_diffeq_new(LT, PT, n);
+    nz=nmod_algeq_to_diffeq_width1(LT, PT, n);
 
     nmod_poly_mat_t kernz;
     nmod_poly_mat_window_init(kernz, LT, 0, 0, n, nz);

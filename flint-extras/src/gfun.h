@@ -121,8 +121,9 @@ void nmod_apply_T(nmod_poly_mat_t  RT, const nmod_poly_mat_t AT, const nmod_poly
  *    T; see algeqtodiffeq.c for the full derivation (both moved/cleaned up
  *    2026-09), the width-1 dependency, and the caller-supplied `state`
  *    convention. deg(phi1)==deg(phi2) is the width(T)<=1 check used by
- *    nmod_algeq_to_diffeq_new -- see nmod_phi_T's own doc in
- *    algeqtodiffeq.c and claude-pseudoKrylov/todo.md.
+ *    nmod_pseudo_Krylov_width1 (algeqtodiffeq_width1.c, flint_throw's on
+ *    failure) -- see nmod_phi_T's own doc in algeqtodiffeq.c and
+ *    claude-pseudoKrylov/todo.md.
  *
  *    r is assumed >= 3 for phi2 (nmod_phi_T only) ?
  *
@@ -176,14 +177,39 @@ void find_uv(nmod_poly_mat_t U, nmod_poly_mat_t V, const nmod_poly_t  phi1, cons
                      const nmod_poly_mat_t PT, const nmod_poly_t Delta, \
                      flint_rand_t state);
 
-/**  Includes simplication to have phi1 at denominator 
+/** Triangular description of a pseudo-Krylov matrix built from a rank-one
+ *  pair (algos.pdf Algorithm 3 "DescriptionFromRank1", Proposition 3.2,
+ *  Sec. 3.3) -- renamed from Description_From_Rank_1 (2026-09-16, "width1"
+ *  per the user's naming correction, see find_uv's doc above). Cleaned up:
+ *  same optimization as find_uv (CT rescaled to phi1-scale once instead of
+ *  a post-division by Delta/phi1 at every column). Full derivation and
+ *  calling-convention notes in algeqtodiffeq_width1.c, where it now lives.
  */
 
-void Description_From_Rank_1(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong n,\
-                             const nmod_poly_mat_t U, const nmod_poly_mat_t V,\
-                             const nmod_poly_t  phi1, const nmod_poly_mat_t CT, \
-                             const nmod_poly_mat_t PT, \
-                             const nmod_poly_t beta, const nmod_poly_mat_t iN, const nmod_poly_t Delta);
+void nmod_width1_description(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong n,
+                              const nmod_poly_mat_t U, const nmod_poly_mat_t V,
+                              const nmod_poly_t phi1, const nmod_poly_mat_t CT,
+                              const nmod_poly_mat_t PT, const nmod_poly_t alpha,
+                              const nmod_poly_mat_t N_ini, const nmod_poly_t Delta);
+
+/** Algorithm 4 (PseudoKrylovWidth1, algos.pdf Sec. 3.4) -- the width-1
+ *  family's own top-level driver, replacing nmod_algeq_to_diffeq_new
+ *  (gfun.c, superseded, kept only for reference -- see
+ *  claude-pseudoKrylov/todo.md for the two real bugs found and fixed here,
+ *  not just a cleanup-in-place). flint_throw's on width(T) > 1 (per the
+ *  user's decision, 2026-09-16). Full doc in algeqtodiffeq_width1.c, where
+ *  it lives alongside find_uv and nmod_width1_description.
+ */
+slong nmod_pseudo_Krylov_width1(nmod_poly_mat_t Y, const nmod_poly_mat_t a, const ulong m,
+                                 const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
+                                 const nmod_poly_t Delta, flint_rand_t state);
+
+/** Cockle's algorithm (G2026.pdf Sec. 7) via nmod_pseudo_Krylov_width1
+ *  above, seeding a = y -- same n convention as nmod_algeq_to_diffeq_naive
+ *  (n = total pseudo-Krylov width, n >= 2 here since Algorithm 4's own
+ *  m = n-1 must be >= 1). See algeqtodiffeq_width1.c for the full doc.
+ */
+slong nmod_algeq_to_diffeq_width1(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
 
 
 /**  Computation of the numerators of the pseudo-Krylov matrix
@@ -266,6 +292,12 @@ slong nmod_algeq_to_diffeq_series(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
 slong nmod_algeq_to_diffeq_series_phi1(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
 
 
+/* nmod_algeq_to_diffeq_new (gfun.c) is superseded by
+ * nmod_algeq_to_diffeq_width1 above (algeqtodiffeq_width1.c) -- two real
+ * bugs found relative to Algorithm 4 (see that function's own doc and
+ * claude-pseudoKrylov/todo.md), not just an unoptimized version of the
+ * same computation. Declaration kept only because gfun.c's own body
+ * hasn't been removed yet. */
 slong nmod_algeq_to_diffeq_new(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
 
 

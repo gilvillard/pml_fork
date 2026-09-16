@@ -34,7 +34,7 @@ mapml:= module()
 			`mod/PMBasis`,`mod/RowPMBasis`,
 			`mod/RightDescription`,`mod/LeftDescription`,
 			`mod/Kernel`,`mod/RowKernel`,`mod/PMNullspace`,`mod/Algeq2diffeqSeries`,
-			`mod/Algeq2diffeqNaive`,`mod/Algeq2diffeqRank1`;
+			`mod/Algeq2diffeqNaive`,`mod/Algeq2diffeqWidth1`;
 
 	option package, load=Init, unload=End: 
 	
@@ -68,7 +68,7 @@ mapml:= module()
     printf("external %s\n",pml_lib);
 	ff:=define_external("nmod_poly_mat_init", MAPLE, LIB = pml_lib):
 
-	printf("[MDeterminant, WeakPopov, RowWeakPopov, PMBasis, MBasis, RowPMBasis, RowMBasis,RightDescription, LeftDescription, Kernel, RowKernel, PMNullspace, Algeq2diffeqNaive, Algeq2diffeqSeries, Algeq2diffeqRank1]");
+	printf("[MDeterminant, WeakPopov, RowWeakPopov, PMBasis, MBasis, RowPMBasis, RowMBasis,RightDescription, LeftDescription, Kernel, RowKernel, PMNullspace, Algeq2diffeqNaive, Algeq2diffeqWidth1, Algeq2diffeqSeries]");
 		
 
 	# Local functions for conversions
@@ -91,7 +91,7 @@ mapml:= module()
 	    description "YYY";
 
 		export polynomial_rt,polymat_rt, matpoly_rt, pm_determinant, pm_diff_mbasis, pm_matrix_mbasis, pm_matrix_pmbasis,pm_coeffs,pm_weakpopov,pm_kernel,pm_row_kernel,pm_nullspace,pm_algeq2diffeq_series,
-		pm_algeq2diffeq_rank1,pm_algeq2diffeq_naive;					
+		pm_algeq2diffeq_width1,pm_algeq2diffeq_naive;					
 
 		polynomial_rt := define_external("polynomial_rt",MAPLE, LIB = mapml_lib);
 
@@ -119,7 +119,7 @@ mapml:= module()
 
 		pm_algeq2diffeq_series := define_external("pm_algeq2diffeq_series",MAPLE, LIB = mapml_lib);
 
-		pm_algeq2diffeq_rank1 := define_external("pm_algeq2diffeq_rank1",MAPLE, LIB = mapml_lib);
+		pm_algeq2diffeq_width1 := define_external("pm_algeq2diffeq_width1",MAPLE, LIB = mapml_lib);
 
 		pm_algeq2diffeq_naive := define_external("pm_algeq2diffeq_naive",MAPLE, LIB = mapml_lib);
 
@@ -304,7 +304,7 @@ mapml:= module()
 
 
 	# n: see Algeq2diffeqNaive's comment above, same convention here.
-	`mod/Algeq2diffeqRank1`:=proc(P,x,y,n,q) local dy, i, A, t, vect_A,res;
+	`mod/Algeq2diffeqWidth1`:=proc(P,x,y,n,q) local dy, i, A, t, vect_A,res;
 
 		dy:=degree(P,y);
 
@@ -318,7 +318,7 @@ mapml:= module()
 
 		vect_A:=map(t->PolynomialTools:-CoefficientVector(t,x),A);
 
-		res:=Dev:-pm_algeq2diffeq_rank1(vect_A, n, q);
+		res:=Dev:-pm_algeq2diffeq_width1(vect_A, n, q);
 
 		res := map(t->PolynomialTools:-FromCoefficientList(t, x), res[2]);
 
