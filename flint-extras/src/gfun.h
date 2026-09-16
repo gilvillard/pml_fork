@@ -221,24 +221,22 @@ slong nmod_algeq_to_diffeq_width1(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
  *    nmod_pseudo_Krylov (this one, without a CT already rescaled by phi1)
  *    is superseded -- see claude-pseudoKrylov/todo.md, "the naive family":
  *    nmod_pseudo_Krylov_naive (algeqtodiffeq_naive.c) is the renamed,
- *    cleaned-up former nmod_pseudo_Krylov_phi1, meant to replace this one
- *    and nmod_pseudo_Krylov_phi1 both. This declaration and
- *    nmod_pseudo_Krylov_phi1's stay only because gfun.c's own
- *    nmod_algeq_to_diffeq (non-phi1 driver) still calls this one and
- *    hasn't been touched.
+ *    cleaned-up former nmod_pseudo_Krylov_phi1 (removed 2026-09-16, had
+ *    zero live callers anywhere -- see claude-pseudoKrylov/todo.md).
+ *    This declaration stays because gfun.c's own nmod_algeq_to_diffeq
+ *    (non-phi1 driver, itself still called live from the sibling
+ *    ../work-algeqtodiffeq project) still calls this one and hasn't been
+ *    touched; also called by nmod_pseudo_Krylov_naive_delta below.
  */
 
 void nmod_pseudo_Krylov(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t CT, \
                         const nmod_poly_mat_t PT, const nmod_poly_t  phi1, const nmod_poly_t  Delta);
 
-void nmod_pseudo_Krylov_phi1(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t CT, \
-                        const nmod_poly_mat_t PT, const nmod_poly_t  phi1, const nmod_poly_t  Delta);
-
 
 /** The naive pseudo-Krylov family (algeqtodiffeq_naive.c): renamed,
- *  cleaned-up versions of nmod_pseudo_Krylov_phi1 /
- *  nmod_algeq_to_diffeq_phi1 above -- the *_phi1 names are being retired
- *  (see claude-pseudoKrylov/todo.md). Uses nmod_algeqtodiffeq_setup +
+ *  cleaned-up versions of the former nmod_pseudo_Krylov_phi1 /
+ *  nmod_algeq_to_diffeq_phi1 (both removed 2026-09-16, see
+ *  claude-pseudoKrylov/todo.md). Uses nmod_algeqtodiffeq_setup +
  *  nmod_algeqtodiffeq_rescale_by_phi1 instead of duplicating that
  *  preamble; nmod_pseudo_Krylov_naive drops the `Delta` parameter (dead in
  *  the *_phi1 original -- computed into an unused `g` and never
@@ -252,16 +250,21 @@ void nmod_pseudo_Krylov_naive(nmod_poly_mat_t K, ulong n, const nmod_poly_mat_t 
 slong nmod_algeq_to_diffeq_naive(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
 
 
-/**  Computation of the appropriate matrix for kernel solution 
- * 
- *    i.e. numerators of the pseudo-Krylov matrix
- *     an r x n polynomial matrix 
- *     with columns multiplied by an appropriate multiple of Delta (not phi1) 
- *     for the moment  
- *   
- */ 
-
-void nmod_pseudo_Krylov_for_kernel(nmod_poly_mat_t LT, const ulong n, const nmod_poly_mat_t PT);
+/** Independent, Delta-scaled reference construction of the r x n
+ *  fraction-free pseudo-Krylov matrix for a=y -- renamed/relocated
+ *  (2026-09-16, per the user) from nmod_pseudo_Krylov_for_kernel, now in
+ *  its own file (algeqtodiffeq_reference.c) precisely because it's NOT
+ *  one of the four algorithm families: it goes through the old
+ *  nmod_pseudo_Krylov with phi1 forced equal to Delta, deliberately
+ *  bypassing the phi1 optimization the naive/width-1 families rely on.
+ *  That independence is what makes it the trusted reference in
+ *  tests/t-algeq-to-diffeq-naive.c and tests/t-algeq-to-diffeq-width1.c
+ *  (claude-pseudoKrylov) -- see that file's own header comment for the
+ *  full rationale, including why it's deliberately NOT given the families'
+ *  own cleanup treatment. Still used by gfun.c's own
+ *  CRT_pseudo_Krylov_for_kernel (CRT/fmpz track, not yet started).
+ */
+void nmod_pseudo_Krylov_naive_delta(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t PT);
 
 
 
@@ -269,16 +272,17 @@ void nmod_pseudo_Krylov_for_kernel(nmod_poly_mat_t LT, const ulong n, const nmod
  *
  *   Fraction-free pseudo-Krylov matrix: full computation w.r.t. phi1
  *
- *    nmod_algeq_to_diffeq_phi1 is superseded by nmod_algeq_to_diffeq_naive
- *    above (algeqtodiffeq_naive.c) -- kept only because nothing has been
- *    repointed at the new name yet. nmod_algeq_to_diffeq (non-phi1) stays
- *    untouched, not ported forward (see claude-pseudoKrylov/todo.md).
+ *    nmod_algeq_to_diffeq_phi1 (superseded by nmod_algeq_to_diffeq_naive,
+ *    algeqtodiffeq_naive.c) was removed 2026-09-16 -- had zero live
+ *    callers anywhere (fork-pml, mapml, tests, or the sibling
+ *    ../work-algeqtodiffeq project), unlike nmod_algeq_to_diffeq
+ *    (non-phi1) below, which stays untouched, not ported forward, because
+ *    ../work-algeqtodiffeq's own work.c/algeqtodiffeq.c still call it live
+ *    (see claude-pseudoKrylov/todo.md).
  *
  */
 
 slong nmod_algeq_to_diffeq(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
-
-slong nmod_algeq_to_diffeq_phi1(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
 
 
 /**  algeqtodiffeq series and descirption 
@@ -301,8 +305,55 @@ slong nmod_algeq_to_diffeq_series_phi1(nmod_poly_mat_t LT, const nmod_poly_mat_t
 slong nmod_algeq_to_diffeq_new(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
 
 
-void iterative_pseudo_krylov(nmod_poly_mat_t N, const nmod_poly_mat_t iP, const nmod_poly_mat_t iQ,\
-                                 const nmod_poly_mat_t a, const slong n);
+/** Algorithm 6 (algos.pdf Sec. 4.2.1, "PseudoKrylovDAC1" in the paper's own
+ *  vocabulary -- "DAC" = Divide And Conquer, see Algorithm 5's own name
+ *  "PseudoKrylovDAC2"), differential case only for now. Solves the
+ *  GENERAL pseudo-Krylov description problem for an arbitrary theta =
+ *  d/dx + T*sigma given directly via T = Q^{-1}P (no width assumption,
+ *  unlike the width-1 family) -- lives in its own file
+ *  (pseudo_krylov_recursive.c), not algeqtodiffeq-specific. Full doc
+ *  there. Corresponds to the draft's _rec_pseudo_krylov/rec_pseudo_krylov
+ *  (gfun.c, not otherwise touched) -- reimplemented from scratch matching
+ *  Algorithm 6's own structure literally, per the user's choice
+ *  (2026-09-16): the draft folds the "advance" step into its k==1 base
+ *  case rather than keeping it in the m>1 recursive branch, which is
+ *  computationally equivalent but less directly traceable against the
+ *  paper.
+ */
+void nmod_pseudo_Krylov_recursive(nmod_poly_mat_t D, nmod_poly_mat_t N,
+                                   nmod_poly_mat_t Qt, nmod_poly_mat_t Pt,
+                                   const nmod_poly_mat_t Q, const nmod_poly_mat_t P,
+                                   const slong * s, const nmod_poly_mat_t a,
+                                   const slong m);
+
+/** Same recurrence as nmod_pseudo_Krylov_recursive above, via a plain
+ *  O(m) sequential loop instead of divide-and-conquer -- a natural
+ *  independent reference for testing it (same per-step formula, no
+ *  recursive splitting). Renamed/relocated (2026-09-16, per the user)
+ *  from the draft's iterative_pseudo_krylov (gfun.c, zero live callers
+ *  anywhere); signature adjusted to match nmod_pseudo_Krylov_recursive's
+ *  own (D,N) convention directly (the draft prepended "a" as an extra
+ *  leading column and never properly returned D). Full doc in
+ *  pseudo_krylov_recursive.c.
+ */
+void nmod_pseudo_Krylov_iterative(nmod_poly_mat_t D, nmod_poly_mat_t N,
+                                   const nmod_poly_mat_t Q, const nmod_poly_mat_t P,
+                                   const nmod_poly_mat_t a, const slong m);
+
+/** Computes an irreducible left description (Q,P) of algeqtodiffeq's own
+ *  T (T=Q^{-1}P), suitable as direct input to nmod_pseudo_Krylov_recursive
+ *  above -- the "second step" (algeqtodiffeq wiring for the Section-4/DAC1
+ *  family), draft correspondence nmod_algeq_to_diffeq_last_phi1's pieces
+ *  (a)+(b) (gfun.c, not otherwise touched). Via a truncated approximant
+ *  basis (PM-Basis), per the user's choice, 2026-09-16 -- see
+ *  algeqtodiffeq_recursive.c for the full doc, including a MAIN open todo
+ *  on the heuristic degree bound this relies on
+ *  (claude-pseudoKrylov/todo.md).
+ */
+void nmod_algeqtodiffeq_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P,
+                                          const nmod_poly_t phi1,
+                                          const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
+                                          const nmod_poly_t Delta);
 
 slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
 
