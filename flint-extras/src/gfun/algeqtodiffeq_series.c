@@ -110,10 +110,30 @@
  *  CT must already be phi1-scaled (nmod_algeqtodiffeq_rescale_by_phi1),
  *  matching nmod_pseudo_Krylov_naive's own convention exactly -- this
  *  function needs no Delta at all, for the same reason that one doesn't.
+ *
+ *  Note the convention difference from every OTHER pseudo-Krylov builder in
+ *  this module: they return fraction-free NUMERATORS (column j carrying an
+ *  implicit denominator phi1^j or Delta^j), whereas this one returns the
+ *  honest TRUNCATED TAYLOR SERIES of theta^j(a) itself -- no implicit
+ *  denominator, the phi1^j having already been divided out as a power
+ *  series (that is exactly what iphi1k does in the loop below, and why this
+ *  route needs phi1(0) != 0 at all).
+ *
+ *  Returns prec, the UNIFORM precision guarantee: every entry of K is
+ *  correct modulo x^prec, and nothing beyond that is left in place (see the
+ *  truncation at the end of the body for why prec < N: differentiating
+ *  costs one term per column). A truncated-series producer that doesn't
+ *  report its own precision would be a trap, and one that reports a number
+ *  its later columns don't actually meet would be worse.
+ *
+ *  prec is always >= sigma+1, so it is always enough for
+ *  nmod_algeqtodiffeq_series_left_description's own order-sigma
+ *  approximant basis below -- that is precisely what the "+ (n-1)" in N
+ *  buys.
  */
-void nmod_pseudo_Krylov_series(nmod_poly_mat_t K, const nmod_poly_t phi1,
-                                const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
-                                const slong n)
+slong nmod_pseudo_Krylov_series(nmod_poly_mat_t K, const nmod_poly_t phi1,
+                                 const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
+                                 const slong n)
 {
     if (n < 1)
         flint_throw(FLINT_DOMERR, "nmod_pseudo_Krylov_series: n must be >= 1 "
@@ -122,6 +142,18 @@ void nmod_pseudo_Krylov_series(nmod_poly_mat_t K, const nmod_poly_t phi1,
     ulong prime = nmod_poly_mat_modulus(PT);
     slong r = (PT->r) - 1;
     slong deg_phi1 = nmod_poly_degree(phi1);
+
+    /* Everything here is expanded around x=0, so x=0 must not be a pole:
+     * phi1(0) != 0, else the phi1^{-1} power series below doesn't exist.
+     * Checked explicitly rather than letting nmod_poly_inv_series abort
+     * with FLINT's own generic "Impossible inverse". This is a genuine
+     * precondition of the whole truncated-series route, not a bug -- the
+     * standard remedy (expand around a shifted point x -> x+c for a
+     * generic c) is a TODO, see claude-pseudoKrylov/todo.md. */
+    if (nmod_poly_get_coeff_ui(phi1, 0) == 0)
+        flint_throw(FLINT_ERROR, "nmod_pseudo_Krylov_series: phi1(0) == 0, so "
+                    "x=0 is a pole and the truncated-series expansion around "
+                    "it does not exist (needs a shifted expansion point)\n");
 
     slong target_degree = deg_phi1 + NMOD_GFUN_NONPROPER_MARGIN;
     slong minrn = FLINT_MIN(r, n);
@@ -188,12 +220,31 @@ void nmod_pseudo_Krylov_series(nmod_poly_mat_t K, const nmod_poly_t phi1,
         }
     }
 
+    /* Per-column precision degradation, and why N carries its "+ (n-1)":
+     * column j is built from d/dx(column j-1), and differentiating a series
+     * known mod x^m leaves one known only mod x^{m-1}. Column 0 is exact (a
+     * constant); column 1 still holds all N terms, since ITS derivative
+     * input is a=y, also constant; every later column loses one more term,
+     * so column j is valid only mod x^{N-(j-1)}. Rather than leave those
+     * invalid top coefficients in place for a caller to trip over, truncate
+     * every column to the weakest guarantee and report that single number
+     * -- so the contract is simply "every entry is correct mod x^prec".
+     * (Found via this function's own test, 2026-09-17: columns 0 and 1
+     * matched the reference exactly while column 2 onwards differed in
+     * precisely the top coefficients.) */
+    slong prec = N - FLINT_MAX(n - 2, 0);
+    for (slong i = 0; i < r; i++)
+        for (slong j = 0; j < n; j++)
+            nmod_poly_truncate(nmod_poly_mat_entry(K, i, j), prec);
+
     nmod_poly_mat_clear(numer);
     nmod_poly_mat_clear(temp);
     nmod_poly_clear(phi1k);
     nmod_poly_clear(iphi1);
     nmod_poly_clear(iphi1k);
     nmod_poly_clear(tpol);
+
+    return prec;
 }
 
 

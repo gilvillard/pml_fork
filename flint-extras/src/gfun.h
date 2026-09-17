@@ -415,10 +415,20 @@ slong nmod_algeq_to_diffeq_recursive(nmod_poly_mat_t LT, const nmod_poly_mat_t P
  *  from deg(phi1) alone, matching this module's existing heuristic-margin
  *  pattern -- exposing it as a caller-supplied parameter is flagged as a
  *  likely future need, not done here (claude-pseudoKrylov/todo.md).
+ *
+ *  Convention note: unlike every other pseudo-Krylov builder here (which
+ *  return fraction-free NUMERATORS, column j carrying an implicit
+ *  denominator phi1^j or Delta^j), this one returns the honest truncated
+ *  TAYLOR SERIES of theta^j(a) itself -- the phi1^j is divided out as a
+ *  power series internally, which is why this route needs phi1(0) != 0
+ *  (checked; flint_throw's otherwise, since x=0 is then a pole).
+ *
+ *  Returns N, the truncation order actually used (every entry is correct
+ *  mod x^N).
  */
-void nmod_pseudo_Krylov_series(nmod_poly_mat_t K, const nmod_poly_t phi1,
-                                const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
-                                const slong n);
+slong nmod_pseudo_Krylov_series(nmod_poly_mat_t K, const nmod_poly_t phi1,
+                                 const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
+                                 const slong n);
 
 /** Computes an irreducible left description (D,N) of the (truncated)
  *  pseudo-Krylov matrix K (D*K=N) directly via nmod_poly_mat_pmbasis --

@@ -138,11 +138,26 @@ void nmod_pseudo_Krylov(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t 
  *  nmod_biv_mulmod_geometric) and calls the old nmod_pseudo_Krylov with
  *  phi1 forced equal to Delta -- i.e. deliberately bypassing the phi1
  *  optimization nmod_pseudo_Krylov_naive relies on, staying at Delta-scale
- *  throughout. Column k (0-indexed) is theta^k(y) as an ordinary
- *  polynomial (already rescaled back from nmod_pseudo_Krylov's own
- *  varying-power-of-phi1 internal representation, see the loop below) --
- *  unlike nmod_pseudo_Krylov_naive's K, this one's columns are directly
- *  comparable without an extra phi1-power correction.
+ *  throughout.
+ *
+ *  Output convention (CORRECTED 2026-09-17, see the removed-loop comment in
+ *  the body): column k (0-indexed) is the fraction-free NUMERATOR
+ *  Delta^k * theta^k(y), with the denominator Delta^k left IMPLICIT --
+ *  exactly the same convention as nmod_pseudo_Krylov_naive's own K (with
+ *  Delta in place of phi1), and this module's convention generally.
+ *  theta^k(y) itself is a genuine RATIONAL function for k >= 1, so there is
+ *  no "ordinary polynomial" form of it for this function to return -- the
+ *  doc used to claim there was, and a loop here used to force every column
+ *  to one common implicit denominator Delta^{n-1} in an attempt at it,
+ *  which also made the output depend on n. Both are gone.
+ *
+ *  A caller that needs a genuinely polynomial matrix (e.g. to take a kernel,
+ *  or to check a relation sum_k eta_k*theta^k(y)=0 against a solution) must
+ *  account for those per-column denominators itself: either rescale column k
+ *  by Delta^{(n-1)-k} to reach one common denominator Delta^{n-1} (what
+ *  nmod_algeq_to_diffeq_naive does to its own K before its kernel call), or
+ *  equivalently weight eta_k by Delta^{(n-1)-k} instead (what this project's
+ *  tests do -- cheaper, and it leaves K's meaning untouched).
  *
  *  Precondition: n >= 1 (not checked here, matches the draft this was
  *  relocated from -- see nmod_pseudo_Krylov_naive's own n=0 precondition
@@ -183,24 +198,26 @@ void nmod_pseudo_Krylov_naive_delta(nmod_poly_mat_t K, const ulong n, const nmod
 
     nmod_pseudo_Krylov(K, n, CT, PT, phi1, Delta);
 
-    /* nmod_pseudo_Krylov's own column j represents phi1^j * theta^j(a):
-     * rescale back to an ordinary polynomial matrix, column j needing an
-     * extra phi1^{(n-1)-j} to match column n-1's normalization (same
-     * rescaling nmod_algeq_to_diffeq_naive applies to its own K). */
-    nmod_poly_t tpol;
-    nmod_poly_init(tpol, prime);
-    nmod_poly_one(tpol);
-    for (slong j = (slong) n - 2; j >= 0; j--)
-    {
-        nmod_poly_mul(tpol, tpol, phi1);
-        for (slong i = 0; i < r; i++)
-            nmod_poly_mul(nmod_poly_mat_entry(K, i, j), nmod_poly_mat_entry(K, i, j), tpol);
-    }
+    /* No rescale loop here: nmod_pseudo_Krylov's own column j IS the
+     * answer, in this module's fraction-free convention -- column j is the
+     * NUMERATOR Delta^j * theta^j(a), with the denominator Delta^j left
+     * implicit (per the user, 2026-09-17: "to not introduce denominators we
+     * only compute the numerators, and denominators are implicitly the
+     * powers of either delta or phi1"). theta^j(a) itself is a genuine
+     * RATIONAL function for j >= 1, so there is no "ordinary polynomial"
+     * form of it to rescale back to -- which is exactly why the loop that
+     * used to be here should not be (the user, same day: "the last loop in
+     * nmod_pseudo_Krylov_naive_delta should not be there"). What it
+     * actually did was force every column to one COMMON implicit
+     * denominator Delta^{n-1} (multiplying column j by Delta^{(n-1)-j}) --
+     * a legitimate operation in itself, but one that belongs to a CALLER
+     * preparing a kernel computation, not baked in here, exactly as
+     * nmod_pseudo_Krylov_naive leaves it to nmod_algeq_to_diffeq_naive. It
+     * also made this function's output silently depend on n. */
 
     nmod_poly_mat_clear(iPyT);
     nmod_poly_mat_clear(PxT);
     nmod_poly_mat_clear(CT);
     nmod_poly_clear(Delta);
     nmod_poly_clear(phi1);
-    nmod_poly_clear(tpol);
 }
