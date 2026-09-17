@@ -39,7 +39,98 @@
     -- rewriting it to share code with the families it validates would
     defeat its purpose as an independent check; a fuller cleanup pass (if
     ever wanted) belongs with the CRT track's own turn, not here.
+
+    nmod_pseudo_Krylov itself moved here too (2026-09-17, per the user),
+    grouped with its own project-owned caller above -- prompted by the user
+    noticing its debug flint_printf ("K: n-th column: ... sec.") firing on
+    every test run through nmod_pseudo_Krylov_naive_delta. Relocation +
+    that one print dropped only (same treatment nmod_pseudo_Krylov_iterative
+    got during its own relocation); no other behavior change -- still
+    called from gfun.c's own nmod_algeq_to_diffeq (kept alive for the
+    external ../work-algeqtodiffeq project) via the unchanged declaration
+    in gfun.h. Per the user (2026-09-17): "We will come back to prints and
+    traces when we will experiment" -- so this is a one-off removal
+    prompted by this specific relocation, not the start of a general
+    debug-print sweep across the rest of gfun.c.
 */
+
+/** Computation of the numerators of the pseudo-Krylov matrix, an r x n
+ *  polynomial matrix, fraction-free (uses phi1 as computed by the caller,
+ *  non-monic since directly related to the resultant, itself non-monic).
+ *  Relocated verbatim from gfun.c (2026-09-17, see the file header comment
+ *  above) except for one dropped debug flint_printf inside the main loop
+ *  -- no other change.
+ */
+void nmod_pseudo_Krylov(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t CT,
+                         const nmod_poly_mat_t PT, const nmod_poly_t phi1, const nmod_poly_t Delta)
+{
+    slong r = (PT->r) - 1;
+    slong d = nmod_poly_mat_degree(PT);
+    ulong prime = nmod_poly_mat_modulus(PT);
+
+    nmod_poly_mat_t tempN; /* for calling ffT */
+    nmod_poly_mat_init(tempN, r, 1, prime);
+
+    nmod_poly_mat_t temp;
+    nmod_poly_mat_init(temp, r, 1, prime);
+
+    nmod_poly_t p1, p2;
+    nmod_poly_init(p1, prime);
+    nmod_poly_init(p2, prime);
+
+    nmod_poly_t dphi1;
+    nmod_poly_init(dphi1, prime);
+    nmod_poly_derivative(dphi1, phi1);
+
+    slong deg_phi1 = nmod_poly_degree(phi1);
+
+    nmod_poly_t g;
+    nmod_poly_init(g, prime);
+    nmod_poly_div(g, Delta, phi1);
+
+    /* First column: y. */
+    for (slong i = 0; i < r; i++)
+        nmod_poly_zero(nmod_poly_mat_entry(K, i, 0));
+    nmod_poly_set_coeff_ui(nmod_poly_mat_entry(K, 1, 0), 0, 1);
+
+    /* Main loop, for the n-1 new columns of K. */
+    slong D = 0;
+    for (slong k = 0; k < (slong) n - 1; k++)
+    {
+        for (slong i = 0; i < r; i++)
+            nmod_poly_set(nmod_poly_mat_entry(tempN, i, 0), nmod_poly_mat_entry(K, i, k));
+
+        /* We add the degree (2r-2)d + (d-1) = (2r-1)d-1 for M^* and Y
+         * (temporarily) when we apply T, (2r-1)d-1 is ok (bounds the
+         * x-degree of the resultant, btw) and then, afterwards, we will
+         * recover the degree of phi1 by simplification -- TO CHECK. */
+        D = k * deg_phi1 + (2 * r - 1) * d - 1;
+
+        nmod_apply_T(temp, tempN, CT, PT, D);
+
+        for (slong i = 0; i < r; i++)
+        {
+            nmod_poly_div(nmod_poly_mat_entry(K, i, k + 1), nmod_poly_mat_entry(temp, i, 0), g);
+
+            nmod_poly_derivative(p1, nmod_poly_mat_entry(K, i, k));
+            nmod_poly_mul(p1, p1, phi1);
+
+            nmod_poly_mul(p2, dphi1, nmod_poly_mat_entry(K, i, k));
+            nmod_poly_scalar_mul_nmod(p2, p2, k);
+
+            nmod_poly_add(nmod_poly_mat_entry(K, i, k + 1), nmod_poly_mat_entry(K, i, k + 1), p1);
+            nmod_poly_sub(nmod_poly_mat_entry(K, i, k + 1), nmod_poly_mat_entry(K, i, k + 1), p2);
+        }
+    }
+
+    nmod_poly_mat_clear(temp);
+    nmod_poly_mat_clear(tempN);
+    nmod_poly_clear(g);
+    nmod_poly_clear(dphi1);
+    nmod_poly_clear(p1);
+    nmod_poly_clear(p2);
+}
+
 
 /** Builds the r x n fraction-free pseudo-Krylov matrix K for a = y (the
  *  monomial basis vector (0,1,0,...,0)^t), by the Delta-scaled route: sets

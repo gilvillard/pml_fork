@@ -33,8 +33,8 @@ mapml:= module()
 			`mod/MBasis`,`mod/RowMBasis`,
 			`mod/PMBasis`,`mod/RowPMBasis`,
 			`mod/RightDescription`,`mod/LeftDescription`,
-			`mod/Kernel`,`mod/RowKernel`,`mod/PMNullspace`,`mod/Algeq2diffeqSeries`,
-			`mod/Algeq2diffeqNaive`,`mod/Algeq2diffeqWidth1`;
+			`mod/Kernel`,`mod/RowKernel`,`mod/PMNullspace`,`mod/Algeq2diffeqSeriesLeft`,
+			`mod/Algeq2diffeqNaive`,`mod/Algeq2diffeqWidth1`,`mod/Algeq2diffeqRecursive`;
 
 	option package, load=Init, unload=End: 
 	
@@ -68,7 +68,7 @@ mapml:= module()
     printf("external %s\n",pml_lib);
 	ff:=define_external("nmod_poly_mat_init", MAPLE, LIB = pml_lib):
 
-	printf("[MDeterminant, WeakPopov, RowWeakPopov, PMBasis, MBasis, RowPMBasis, RowMBasis,RightDescription, LeftDescription, Kernel, RowKernel, PMNullspace, Algeq2diffeqNaive, Algeq2diffeqWidth1, Algeq2diffeqSeries]");
+	printf("[MDeterminant, WeakPopov, RowWeakPopov, PMBasis, MBasis, RowPMBasis, RowMBasis,RightDescription, LeftDescription, Kernel, RowKernel, PMNullspace, Algeq2diffeqNaive, Algeq2diffeqWidth1, Algeq2diffeqSeriesLeft, Algeq2diffeqRecursive]");
 		
 
 	# Local functions for conversions
@@ -90,8 +90,8 @@ mapml:= module()
 
 	    description "YYY";
 
-		export polynomial_rt,polymat_rt, matpoly_rt, pm_determinant, pm_diff_mbasis, pm_matrix_mbasis, pm_matrix_pmbasis,pm_coeffs,pm_weakpopov,pm_kernel,pm_row_kernel,pm_nullspace,pm_algeq2diffeq_series,
-		pm_algeq2diffeq_width1,pm_algeq2diffeq_naive;					
+		export polynomial_rt,polymat_rt, matpoly_rt, pm_determinant, pm_diff_mbasis, pm_matrix_mbasis, pm_matrix_pmbasis,pm_coeffs,pm_weakpopov,pm_kernel,pm_row_kernel,pm_nullspace,pm_algeq2diffeq_series_left,
+		pm_algeq2diffeq_width1,pm_algeq2diffeq_naive,pm_algeq2diffeq_recursive;					
 
 		polynomial_rt := define_external("polynomial_rt",MAPLE, LIB = mapml_lib);
 
@@ -117,11 +117,13 @@ mapml:= module()
 
 		pm_nullspace := define_external("pm_nullspace",MAPLE, LIB = mapml_lib);
 
-		pm_algeq2diffeq_series := define_external("pm_algeq2diffeq_series",MAPLE, LIB = mapml_lib);
+		pm_algeq2diffeq_series_left := define_external("pm_algeq2diffeq_series_left",MAPLE, LIB = mapml_lib);
 
 		pm_algeq2diffeq_width1 := define_external("pm_algeq2diffeq_width1",MAPLE, LIB = mapml_lib);
 
 		pm_algeq2diffeq_naive := define_external("pm_algeq2diffeq_naive",MAPLE, LIB = mapml_lib);
+
+		pm_algeq2diffeq_recursive := define_external("pm_algeq2diffeq_recursive",MAPLE, LIB = mapml_lib);
 
 	end module: 	
 
@@ -280,7 +282,7 @@ mapml:= module()
 	end proc:
 
 	# n: see Algeq2diffeqNaive's comment above, same convention here.
-	`mod/Algeq2diffeqSeries`:=proc(P,x,y,n,q) local dy, i, A, t, vect_A,res;
+	`mod/Algeq2diffeqSeriesLeft`:=proc(P,x,y,n,q) local dy, i, A, t, vect_A,res;
 
 		dy:=degree(P,y);
 
@@ -294,7 +296,7 @@ mapml:= module()
 
 		vect_A:=map(t->PolynomialTools:-CoefficientVector(t,x),A);
 
-		res:=Dev:-pm_algeq2diffeq_series(vect_A, n, q);
+		res:=Dev:-pm_algeq2diffeq_series_left(vect_A, n, q);
 
 		res := map(t->PolynomialTools:-FromCoefficientList(t, x), res[2]);
 
@@ -319,6 +321,29 @@ mapml:= module()
 		vect_A:=map(t->PolynomialTools:-CoefficientVector(t,x),A);
 
 		res:=Dev:-pm_algeq2diffeq_width1(vect_A, n, q);
+
+		res := map(t->PolynomialTools:-FromCoefficientList(t, x), res[2]);
+
+		return res;
+
+	end proc:
+
+	# n: see Algeq2diffeqNaive's comment above, same convention here.
+	`mod/Algeq2diffeqRecursive`:=proc(P,x,y,n,q) local dy, i, A, t, vect_A,res;
+
+		dy:=degree(P,y);
+
+		A:=Matrix(dy+1,1);
+
+		for i from 0 to dy do
+			A[i+1,1]:=coeff(P,y,i):
+		od:
+
+		A:=map(t->modp(expand(t),q),A);
+
+		vect_A:=map(t->PolynomialTools:-CoefficientVector(t,x),A);
+
+		res:=Dev:-pm_algeq2diffeq_recursive(vect_A, n, q);
 
 		res := map(t->PolynomialTools:-FromCoefficientList(t, x), res[2]);
 

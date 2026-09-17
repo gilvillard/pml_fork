@@ -121,7 +121,7 @@ void nmod_apply_T(nmod_poly_mat_t  RT, const nmod_poly_mat_t AT, const nmod_poly
  *    T; see algeqtodiffeq.c for the full derivation (both moved/cleaned up
  *    2026-09), the width-1 dependency, and the caller-supplied `state`
  *    convention. deg(phi1)==deg(phi2) is the width(T)<=1 check used by
- *    nmod_pseudo_Krylov_width1 (algeqtodiffeq_width1.c, flint_throw's on
+ *    _nmod_algeq_to_diffeq_width1 (algeqtodiffeq_width1.c, flint_throw's on
  *    failure) -- see nmod_phi_T's own doc in algeqtodiffeq.c and
  *    claude-pseudoKrylov/todo.md.
  *
@@ -193,18 +193,29 @@ void nmod_width1_description(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong
                               const nmod_poly_mat_t N_ini, const nmod_poly_t Delta);
 
 /** Algorithm 4 (PseudoKrylovWidth1, algos.pdf Sec. 3.4) -- the width-1
- *  family's own top-level driver, replacing nmod_algeq_to_diffeq_new
+ *  family's own core computation, replacing nmod_algeq_to_diffeq_new
  *  (gfun.c, superseded, kept only for reference -- see
  *  claude-pseudoKrylov/todo.md for the two real bugs found and fixed here,
  *  not just a cleanup-in-place). flint_throw's on width(T) > 1 (per the
- *  user's decision, 2026-09-16). Full doc in algeqtodiffeq_width1.c, where
- *  it lives alongside find_uv and nmod_width1_description.
+ *  user's decision, 2026-09-16). Leading underscore (2026-09-17, per the
+ *  user): this is NOT a generic "pseudo_Krylov" building block like
+ *  nmod_pseudo_Krylov_recursive/_iterative (those stop at a description
+ *  (N,D)); it takes algeqtodiffeq's own CT/PT/Delta directly and runs the
+ *  computation all the way through the final kernel/nullspace step,
+ *  returning the solutions Y themselves -- i.e. it's the same kind of
+ *  function as nmod_algeq_to_diffeq_width1 below (full algeqtodiffeq
+ *  solve), just with a more general interface (arbitrary seed a and m, no
+ *  setup step) instead of the fixed-seed Cockle wrapper. The underscore
+ *  marks exactly that relationship, matching FLINT's own convention:
+ *  nmod_algeq_to_diffeq_width1 (the convenience wrapper) calls this
+ *  function internally. Full doc in algeqtodiffeq_width1.c, where it lives
+ *  alongside find_uv and nmod_width1_description.
  */
-slong nmod_pseudo_Krylov_width1(nmod_poly_mat_t Y, const nmod_poly_mat_t a, const ulong m,
-                                 const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
-                                 const nmod_poly_t Delta, flint_rand_t state);
+slong _nmod_algeq_to_diffeq_width1(nmod_poly_mat_t Y, const nmod_poly_mat_t a, const ulong m,
+                                    const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
+                                    const nmod_poly_t Delta, flint_rand_t state);
 
-/** Cockle's algorithm (G2026.pdf Sec. 7) via nmod_pseudo_Krylov_width1
+/** Cockle's algorithm (G2026.pdf Sec. 7) via _nmod_algeq_to_diffeq_width1
  *  above, seeding a = y -- same n convention as nmod_algeq_to_diffeq_naive
  *  (n = total pseudo-Krylov width, n >= 2 here since Algorithm 4's own
  *  m = n-1 must be >= 1). See algeqtodiffeq_width1.c for the full doc.
@@ -350,10 +361,94 @@ void nmod_pseudo_Krylov_iterative(nmod_poly_mat_t D, nmod_poly_mat_t N,
  *  on the heuristic degree bound this relies on
  *  (claude-pseudoKrylov/todo.md).
  */
-void nmod_algeqtodiffeq_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P,
+void nmod_algeqtodiffeq_T_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P,
                                           const nmod_poly_t phi1,
                                           const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
                                           const nmod_poly_t Delta);
+
+/** Description of algeqtodiffeq's own pseudo-Krylov matrix K =
+ *  [theta(a) ... theta^m(a)] = D^{-1}N (D, N as in nmod_pseudo_Krylov_recursive),
+ *  for theta = d/dx + T (T algeqtodiffeq's own, via CT/PT/Delta). Pieces
+ *  (a)+(b)+(c) of the "second step" (draft nmod_algeq_to_diffeq_last_phi1):
+ *  builds an irreducible left description of T via
+ *  nmod_algeqtodiffeq_T_left_description above, then feeds it directly to
+ *  nmod_pseudo_Krylov_recursive (zero shift, Qt/Pt discarded -- no caller
+ *  needs to extend the sequence further yet). D, N must already be
+ *  nmod_poly_mat_init'd by the caller, r x r and r x m (r = (PT->r)-1).
+ *  phi1 already computed by the caller (e.g. via nmod_phi1). See
+ *  algeqtodiffeq_recursive.c for the full doc.
+ */
+void nmod_algeqtodiffeq_pseudo_krylov_description(nmod_poly_mat_t D, nmod_poly_mat_t N,
+                                                   const nmod_poly_t phi1,
+                                                   const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
+                                                   const nmod_poly_t Delta,
+                                                   const nmod_poly_mat_t a, const slong m);
+
+/** Cockle's algorithm (G2026.pdf Sec. 7) via the Section-4/DAC1 family
+ *  (Algorithm 6): an alternative to nmod_algeq_to_diffeq_width1 that needs
+ *  no width <= 1 assumption on T. Seeds a = y, gets (D,N) from
+ *  nmod_algeqtodiffeq_pseudo_krylov_description above with m = n-1, then
+ *  piece (d): rescales the seed itself by D (v = D*a, matching the other
+ *  columns' common left factor) and takes a plain column kernel of
+ *  [v | N] directly -- valid since D is a fixed nonsingular left
+ *  multiplier, so [v|N]*eta = 0 iff [a, theta(a), ..., theta^{n-1}(a)]*eta
+ *  = 0 (no division by D ever needed). Same n convention as
+ *  nmod_algeq_to_diffeq_naive/_width1 (n = total pseudo-Krylov matrix
+ *  width, n >= 2). See algeqtodiffeq_recursive.c for the full doc.
+ */
+slong nmod_algeq_to_diffeq_recursive(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
+
+/** The "Series" (heuristic) family, algeqtodiffeq's fourth pseudo-Krylov
+ *  approach (draft nmod_algeq_to_diffeq_series_phi1, gfun.c, not otherwise
+ *  touched) -- no numbered algorithm in algos.pdf/G2026.pdf to cross-check
+ *  against, genuinely heuristic (see algeqtodiffeq_series.c's own header
+ *  comment): builds the pseudo-Krylov matrix K only as a power series
+ *  TRUNCATED to a fixed precision (unlike the other three families' exact
+ *  fraction-free tracking), then recovers an exact rational description
+ *  from that truncation via a matrix Hermite-Padé-style approximant basis.
+ *  If the truncation precision guess is too small, this can silently
+ *  produce a wrong answer consistent with the truncation -- that risk,
+ *  not present in the other families, is what makes this one unproven.
+ *
+ *  MAIN TODO (per the user, 2026-09-17): target_degree (hence the
+ *  precision N/sigma derived from it) is currently computed internally
+ *  from deg(phi1) alone, matching this module's existing heuristic-margin
+ *  pattern -- exposing it as a caller-supplied parameter is flagged as a
+ *  likely future need, not done here (claude-pseudoKrylov/todo.md).
+ */
+void nmod_pseudo_Krylov_series(nmod_poly_mat_t K, const nmod_poly_t phi1,
+                                const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
+                                const slong n);
+
+/** Computes an irreducible left description (D,N) of the (truncated)
+ *  pseudo-Krylov matrix K (D*K=N) directly via nmod_poly_mat_pmbasis --
+ *  the SAME construction technique as nmod_algeqtodiffeq_T_left_description
+ *  (a truncated approximant basis, filtering rows by shift<=target_degree),
+ *  applied to K instead of T's own matrix. Deliberately NOT built on top of
+ *  PML's generic nmod_poly_mat_left_description (nmod_poly_mat_description.c)
+ *  -- per the user, 2026-09-17: "I don't want to rely on
+ *  nmod_poly_mat_left_description for the moment ... it is not stable at
+ *  all (we will consider it later)". target_degree/sigma computed
+ *  internally from phi1, matching nmod_pseudo_Krylov_series's own formula
+ *  exactly. See algeqtodiffeq_series.c for the full doc.
+ */
+void nmod_algeqtodiffeq_series_left_description(nmod_poly_mat_t N, nmod_poly_mat_t D,
+                                                 const nmod_poly_mat_t K, const nmod_poly_t phi1);
+
+/** Cockle's algorithm (G2026.pdf Sec. 7) via the Series/Padé family's own
+ *  LEFT-description route only, for now -- a nmod_algeq_to_diffeq_series_right
+ *  sibling (via a random n x r projection reducing the r x n K to a
+ *  square n x n system before the description step) is an explicit future
+ *  todo, important for efficiency when n << r (claude-pseudoKrylov/todo.md)
+ *  -- meant to coexist with this one, not replace it. nmod_algeq_to_diffeq_series
+ *  itself is already taken (still used by Maple's pm_algeq2diffeq_series,
+ *  pointing at the non-_phi1 draft in gfun.c) -- this is a fresh name, not
+ *  a repointing, since nmod_algeq_to_diffeq_series_phi1 (the draft cleaned
+ *  up here) has no Maple binding at all. Same n/seed=y convention as
+ *  nmod_algeq_to_diffeq_naive/_width1/_recursive. See algeqtodiffeq_series.c
+ *  for the full doc.
+ */
+slong nmod_algeq_to_diffeq_series_left(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
 
 slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
 

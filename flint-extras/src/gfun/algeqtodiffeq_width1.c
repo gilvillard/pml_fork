@@ -41,13 +41,21 @@
     Description_From_Rank_1, algos.pdf's "DescriptionFromRank1", Algorithm
     3 / Proposition 3.2, Sec. 3.3) is next.
 
-    nmod_pseudo_Krylov_width1 / nmod_algeq_to_diffeq_width1 (2026-09-16,
+    _nmod_algeq_to_diffeq_width1 / nmod_algeq_to_diffeq_width1 (2026-09-16,
     Algorithm 4/PseudoKrylovWidth1, replacing the draft's
     nmod_algeq_to_diffeq_new) complete the family: two real bugs were
     found and fixed relative to the draft (wrong seed for the second
     nmod_width1_description call; the block matrix P missing its
     Algorithm-4-required augmentation, which silently forced eta_0=0) --
-    see nmod_pseudo_Krylov_width1's own doc and claude-pseudoKrylov/todo.md.
+    see _nmod_algeq_to_diffeq_width1's own doc and claude-pseudoKrylov/todo.md.
+
+    Renamed from nmod_pseudo_Krylov_width1 (2026-09-17, per the user): this
+    function is algeqtodiffeq-specific end to end (takes CT/PT/Delta,
+    computes through the final kernel), unlike the general
+    nmod_pseudo_Krylov_recursive/_iterative family (which stops at a
+    description (N,D)) -- the leading underscore marks it as
+    nmod_algeq_to_diffeq_width1's own lower-level core (general seed a/m,
+    no setup), not a "pseudo_Krylov" building block.
 */
 
 
@@ -183,7 +191,7 @@ void find_uv(nmod_poly_mat_t U, nmod_poly_mat_t V, const nmod_poly_t phi1,
  *  d/dx + T), matching Proposition 3.2's N_{i+1} = theta(N_i) - b_{i+1}
  *  u/Delta. Factored out (2026-09-16) so nmod_width1_description's own
  *  loop and Lemma 3.7's one-off F_1 = theta(a) - b_1*u/Delta computation
- *  (nmod_pseudo_Krylov_width1, same file) share one formula instead of two
+ *  (_nmod_algeq_to_diffeq_width1, same file) share one formula instead of two
  *  independently-typed copies of it.
  *
  *  CT_phi1 must already be phi1-scaled (nmod_algeqtodiffeq_rescale_CT_by_phi1);
@@ -251,7 +259,7 @@ nmod_width1_recurrence_step(nmod_poly_mat_t N_next, nmod_poly_t beta_next,
  *  description of the (a priori unbounded-denominator) pseudo-Krylov
  *  sequence q, q, theta(q), theta^2(q), ...
  *
- *  Two calling conventions, both used by nmod_pseudo_Krylov_width1
+ *  Two calling conventions, both used by _nmod_algeq_to_diffeq_width1
  *  (Algorithm 4, same file):
  *   - alpha = phi1, N_ini = U: literally Proposition 3.2 (q = u/phi1),
  *     giving the (N,D) description of Q itself.
@@ -259,7 +267,7 @@ nmod_width1_recurrence_step(nmod_poly_mat_t N_next, nmod_poly_t beta_next,
  *     * u/phi1 (i.e. Lemma 3.7's beta, f): builds the (F,A) pair of
  *     Proposition 3.3 for a general seed vector a (Sec. 3.4) -- computing
  *     alpha/N_ini this way (one extra step of the SAME recurrence, seeded
- *     at a) is what Lemma 3.7 actually specifies; nmod_pseudo_Krylov_width1
+ *     at a) is what Lemma 3.7 actually specifies; _nmod_algeq_to_diffeq_width1
  *     computes them via nmod_width1_recurrence_step (this file) before
  *     calling this function a second time. The draft this was cleaned up
  *     from instead passed alpha=0, N_ini=a directly -- a real bug, not
@@ -393,12 +401,12 @@ void nmod_width1_description(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong
  *      structurally forcing eta_0 = 0, a degenerate special case rather
  *      than a general solution to Problem 1/2.
  */
-slong nmod_pseudo_Krylov_width1(nmod_poly_mat_t Y, const nmod_poly_mat_t a, const ulong m,
+slong _nmod_algeq_to_diffeq_width1(nmod_poly_mat_t Y, const nmod_poly_mat_t a, const ulong m,
                                  const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
                                  const nmod_poly_t Delta, flint_rand_t state)
 {
     if (m < 1)
-        flint_throw(FLINT_DOMERR, "nmod_pseudo_Krylov_width1: m must be >= 1\n");
+        flint_throw(FLINT_DOMERR, "_nmod_algeq_to_diffeq_width1: m must be >= 1\n");
 
     ulong prime = nmod_poly_mat_modulus(PT);
     slong r = (PT->r) - 1;
@@ -427,7 +435,7 @@ slong nmod_pseudo_Krylov_width1(nmod_poly_mat_t Y, const nmod_poly_mat_t a, cons
     {
         nmod_phi_T(phi1, phi2, CT, PT, Delta, state);
         if (nmod_poly_degree(phi1) != nmod_poly_degree(phi2))
-            flint_throw(FLINT_ERROR, "nmod_pseudo_Krylov_width1: T does not have width <= 1 "
+            flint_throw(FLINT_ERROR, "_nmod_algeq_to_diffeq_width1: T does not have width <= 1 "
                         "(deg(phi1)=%wd, deg(phi2)=%wd)\n",
                         nmod_poly_degree(phi1), nmod_poly_degree(phi2));
     }
@@ -530,7 +538,7 @@ slong nmod_pseudo_Krylov_width1(nmod_poly_mat_t Y, const nmod_poly_mat_t a, cons
  *  Returns nz, the number of solutions found; LT is an n x n polynomial
  *  matrix whose first nz columns are the solutions (LT[i][j] = eta_i of
  *  the j-th solution). flint_throw's if T does not have width <= 1 --
- *  see nmod_pseudo_Krylov_width1's own doc.
+ *  see _nmod_algeq_to_diffeq_width1's own doc.
  */
 slong nmod_algeq_to_diffeq_width1(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n)
 {
@@ -559,7 +567,7 @@ slong nmod_algeq_to_diffeq_width1(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
     srand((unsigned int) clock());
     flint_rand_set_seed(state, rand(), rand());
 
-    slong nz = nmod_pseudo_Krylov_width1(LT, a, n - 1, CT, PT, Delta, state);
+    slong nz = _nmod_algeq_to_diffeq_width1(LT, a, n - 1, CT, PT, Delta, state);
 
     flint_rand_clear(state);
     nmod_poly_mat_clear(a);

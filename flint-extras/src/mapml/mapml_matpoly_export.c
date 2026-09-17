@@ -764,7 +764,7 @@ ALGEB pm_algeq2diffeq_naive(MKernelVector kv, ALGEB *args){
 
 /* args[2] is n -- see pm_algeq2diffeq_naive's header comment, same
  * convention here. */
-ALGEB pm_algeq2diffeq_series(MKernelVector kv, ALGEB *args){
+ALGEB pm_algeq2diffeq_series_left(MKernelVector kv, ALGEB *args){
 
     ALGEB vectmat=args[1];
 
@@ -782,7 +782,7 @@ ALGEB pm_algeq2diffeq_series(MKernelVector kv, ALGEB *args){
 
     slong nz;
 
-    nz=nmod_algeq_to_diffeq_series(LT, PT, n);
+    nz=nmod_algeq_to_diffeq_series_left(LT, PT, n);
 
     nmod_poly_mat_t kernz;
     nmod_poly_mat_window_init(kernz, LT, 0, 0, n, nz);
@@ -836,6 +836,41 @@ ALGEB pm_algeq2diffeq_width1(MKernelVector kv, ALGEB *args){
 
 }
 
+
+ALGEB pm_algeq2diffeq_recursive(MKernelVector kv, ALGEB *args){
+
+    ALGEB vectmat=args[1];
+
+    ulong n  = MapleToInteger64(kv,args[2]);
+
+    ulong modulus = MapleToInteger64(kv,args[3]);
+
+
+    nmod_poly_mat_t PT;
+
+    get_nmod_poly_mat(PT, modulus, kv, vectmat);
+
+    nmod_poly_mat_t LT;
+    nmod_poly_mat_init(LT,n,n,modulus);
+
+    slong nz;
+
+    nz=nmod_algeq_to_diffeq_recursive(LT, PT, n);
+
+    nmod_poly_mat_t kernz;
+    nmod_poly_mat_window_init(kernz, LT, 0, 0, n, nz);
+
+   
+    ALGEB res= MapleListAlloc(kv,2);
+    MapleListAssign(kv,res,1,ToMapleInteger(kv,nz));
+    MapleListAssign(kv,res,2,nmod_poly_mat_to_algeb(kv,kernz));
+
+    nmod_poly_mat_clear(LT);
+    nmod_poly_mat_window_clear(kernz);
+
+    return res;
+
+}
 
 /* -*- mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 // vim:sts=4:sw=4:ts=4:et:sr:cino=>s,f0,{0,g0,(0,\:0,t0,+0,=s

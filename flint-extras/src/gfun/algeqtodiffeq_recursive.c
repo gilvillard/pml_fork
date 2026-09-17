@@ -10,6 +10,9 @@
     <https://www.gnu.org/licenses/>.
 */
 
+#include <stdlib.h>
+#include <time.h>
+
 #include <flint/nmod_poly.h>
 
 #include "nmod_poly_mat_extra.h"
@@ -107,7 +110,7 @@
  *  consistency with how this project already treats other construction
  *  failures, e.g. width(T)>1 in the width-1 family).
  */
-void nmod_algeqtodiffeq_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P,
+void nmod_algeqtodiffeq_T_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P,
                                           const nmod_poly_t phi1,
                                           const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
                                           const nmod_poly_t Delta)
@@ -183,7 +186,7 @@ void nmod_algeqtodiffeq_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P,
         }
     }
     if (nbrows < r)
-        flint_throw(FLINT_ERROR, "nmod_algeqtodiffeq_left_description: no complete "
+        flint_throw(FLINT_ERROR, "nmod_algeqtodiffeq_T_left_description: no complete "
                     "description of degree at most %wd found (target_degree too small?)\n",
                     target_degree);
 
@@ -194,4 +197,136 @@ void nmod_algeqtodiffeq_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P,
     nmod_poly_mat_clear(col);
     nmod_poly_mat_clear(B);
     nmod_poly_mat_clear(ker);
+}
+
+
+/** Description of algeqtodiffeq's own pseudo-Krylov matrix, piece (c) of
+ *  the "second step" wired onto pieces (a)+(b) above: builds an
+ *  irreducible left description of T via nmod_algeqtodiffeq_T_left_description,
+ *  then feeds it directly to the general nmod_pseudo_Krylov_recursive
+ *  (pseudo_krylov_recursive.c) -- zero shift (no reason yet to favor any
+ *  row of the description), Qt/Pt discarded on a local scratch pair (no
+ *  caller of this function needs to extend the sequence further; they're
+ *  only useful to nmod_pseudo_Krylov_recursive's own recursive calls, and
+ *  it manages those internally).
+ *
+ *  D, N must already be nmod_poly_mat_init'd by the caller, r x r and
+ *  r x m (r = (PT->r)-1). phi1, CT, PT, Delta as elsewhere in this module.
+ *  Output: theta = d/dx + T satisfies [theta(a) ... theta^m(a)] = D^{-1}N.
+ */
+void nmod_algeqtodiffeq_pseudo_krylov_description(nmod_poly_mat_t D, nmod_poly_mat_t N,
+                                                   const nmod_poly_t phi1,
+                                                   const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
+                                                   const nmod_poly_t Delta,
+                                                   const nmod_poly_mat_t a, const slong m)
+{
+    ulong prime = nmod_poly_mat_modulus(PT);
+    slong r = (PT->r) - 1;
+
+    nmod_poly_mat_t Q, P;
+    nmod_poly_mat_init(Q, r, r, prime);
+    nmod_poly_mat_init(P, r, r, prime);
+    nmod_algeqtodiffeq_T_left_description(Q, P, phi1, CT, PT, Delta);
+
+    nmod_poly_mat_t Qt, Pt;
+    nmod_poly_mat_init(Qt, r, r, prime);
+    nmod_poly_mat_init(Pt, r, r, prime);
+    nmod_pseudo_Krylov_recursive(D, N, Qt, Pt, Q, P, NULL, a, m);
+
+    nmod_poly_mat_clear(Q);
+    nmod_poly_mat_clear(P);
+    nmod_poly_mat_clear(Qt);
+    nmod_poly_mat_clear(Pt);
+}
+
+
+/** Cockle's algorithm (G2026.pdf Sec. 7) via the Section-4/DAC1 family
+ *  (Algorithm 6) -- piece (d) on top of nmod_algeqtodiffeq_pseudo_krylov_description
+ *  above, an alternative to nmod_algeq_to_diffeq_width1 that needs no
+ *  width <= 1 assumption on T (Section 4's whole point, per CLAUDE.md).
+ *
+ *  Draft correspondence (rec_pseudo_krylov/nmod_algeq_to_diffeq_last_phi1,
+ *  gfun.c, not otherwise touched): given D, N with [theta(a) ... theta^{n-1}(a)]
+ *  = D^{-1}N (m = n-1 columns), the draft rescales the seed itself by the
+ *  SAME D (v = D*a) and prepends it, giving a combined matrix
+ *  [v | N] = D*[a, theta(a), ..., theta^{n-1}(a)] all sharing one common
+ *  left factor D. Since D is a fixed nonsingular matrix (Lemma 4.2), a
+ *  plain column kernel of [v|N] already gives exactly the eta with
+ *  sum eta_i*theta^i(a) = 0 -- no division by D is ever needed:
+ *  D*K*eta = 0 iff K*eta = 0. Reimplemented fresh here (not a clean-up of
+ *  the draft, matching how nmod_pseudo_Krylov_recursive itself was done),
+ *  same convention throughout this project's Cockle drivers
+ *  (nmod_algeq_to_diffeq_naive/_width1): n is the total pseudo-Krylov
+ *  matrix width (n >= 2), seeding a = y.
+ *
+ *  Returns nz, the number of solutions found; LT is an n x n polynomial
+ *  matrix whose first nz columns are the solutions (LT[i][j] = eta_i of
+ *  the j-th solution) -- same convention as nmod_algeq_to_diffeq_width1.
+ */
+slong nmod_algeq_to_diffeq_recursive(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n)
+{
+    if (n < 2)
+        flint_throw(FLINT_DOMERR, "nmod_algeq_to_diffeq_recursive: n must be >= 2 "
+                    "(n is the pseudo-Krylov matrix width itself)\n");
+
+    ulong prime = nmod_poly_mat_modulus(PT);
+    slong r = (PT->r) - 1;
+    slong m = n - 1;
+
+    nmod_poly_t Delta;
+    nmod_poly_mat_t iPyT, CT;
+    nmod_algeqtodiffeq_setup(Delta, iPyT, CT, PT);
+
+    /* TODO(cleanup): matches the rest of this module's not-yet-fixed
+     * per-call reseeding, see claude-pseudoKrylov/todo.md item 7/8. */
+    flint_rand_t state;
+    flint_rand_init(state);
+    srand((unsigned int) clock());
+    flint_rand_set_seed(state, rand(), rand());
+
+    nmod_poly_t phi1;
+    nmod_poly_init(phi1, prime);
+    nmod_phi1(phi1, CT, PT, Delta, state);
+
+    nmod_poly_mat_t a;
+    nmod_poly_mat_init(a, r, 1, prime);
+    for (slong i = 0; i < r; i++)
+        nmod_poly_zero(nmod_poly_mat_entry(a, i, 0));
+    nmod_poly_set_coeff_ui(nmod_poly_mat_entry(a, 1, 0), 0, 1);
+
+    nmod_poly_mat_t D, N;
+    nmod_poly_mat_init(D, r, r, prime);
+    nmod_poly_mat_init(N, r, m, prime);
+    nmod_algeqtodiffeq_pseudo_krylov_description(D, N, phi1, CT, PT, Delta, a, m);
+
+    /* (d): v = D*a, K = [v | N], plain column kernel. */
+    nmod_poly_mat_t v;
+    nmod_poly_mat_init(v, r, 1, prime);
+    nmod_poly_mat_mul(v, D, a);
+
+    nmod_poly_mat_t K;
+    nmod_poly_mat_init(K, r, n, prime);
+    for (slong i = 0; i < r; i++)
+    {
+        nmod_poly_set(nmod_poly_mat_entry(K, i, 0), nmod_poly_mat_entry(v, i, 0));
+        for (slong j = 0; j < m; j++)
+            nmod_poly_set(nmod_poly_mat_entry(K, i, j + 1), nmod_poly_mat_entry(N, i, j));
+    }
+
+    slong * pivind = flint_malloc(n * sizeof(slong));
+    slong nz = nmod_poly_mat_kernel(LT, pivind, NULL, K, ORD_WEAK_POPOV, COL_UPPER);
+    flint_free(pivind);
+
+    flint_rand_clear(state);
+    nmod_poly_mat_clear(a);
+    nmod_poly_mat_clear(D);
+    nmod_poly_mat_clear(N);
+    nmod_poly_mat_clear(v);
+    nmod_poly_mat_clear(K);
+    nmod_poly_clear(phi1);
+    nmod_poly_mat_clear(iPyT);
+    nmod_poly_mat_clear(CT);
+    nmod_poly_clear(Delta);
+
+    return nz;
 }

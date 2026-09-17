@@ -165,9 +165,11 @@ ALGEB pm_nullspace(MKernelVector kv, ALGEB *args);
 
 ALGEB pm_algeq2diffeq_naive(MKernelVector kv, ALGEB *args);
 
-ALGEB pm_algeq2diffeq_series(MKernelVector kv, ALGEB *args);
+ALGEB pm_algeq2diffeq_series_left(MKernelVector kv, ALGEB *args);
 
 ALGEB pm_algeq2diffeq_width1(MKernelVector kv, ALGEB *args);
+
+ALGEB pm_algeq2diffeq_recursive(MKernelVector kv, ALGEB *args);
 
 #ifdef __cplusplus
 }

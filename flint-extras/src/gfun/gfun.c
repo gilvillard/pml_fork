@@ -89,126 +89,15 @@ void mat_to_xy(nmod_mpoly_t P, nmod_mpoly_ctx_t ctx, const nmod_poly_mat_t PT)
 
 
 
-/**  Computation of the numerators of the pseudo-Krylov matrix
- *     an r x n polynomial matrix 
- * 
- *     central procedure 
- * 
- *    fraction-free approach 
- *   uses phi1 as computed previously, non monic since directly related to the resultant (non monic either) 
- */ 
-
-void nmod_pseudo_Krylov(nmod_poly_mat_t K, const ulong n, const nmod_poly_mat_t CT, \
-                        const nmod_poly_mat_t PT, const nmod_poly_t  phi1, const nmod_poly_t  Delta)
-{
-    int i;
-
-    slong r = (PT->r)-1;
-
-    slong d;
-    d = nmod_poly_mat_degree(PT);
-
-    ulong prime;
-    prime = nmod_poly_mat_modulus(PT);
-
-
-    nmod_poly_mat_t  tempN; // for calling ffT 
-    nmod_poly_mat_init(tempN,r,1,prime);
-
-    nmod_poly_mat_t  temp; 
-    nmod_poly_mat_init(temp,r,1,prime);
-
-
-    nmod_poly_t p1,p2;
-    nmod_poly_init(p1,prime);
-    nmod_poly_init(p2,prime);
-
-    nmod_poly_t dphi1;
-    nmod_poly_init(dphi1,prime);
-    nmod_poly_derivative(dphi1,phi1);
-
-    slong deg_phi1;
-    deg_phi1=nmod_poly_degree(phi1);
-
-    nmod_poly_t g;
-    nmod_poly_init(g,prime);
-    nmod_poly_div(g,Delta,phi1);
-
-    /** First column y 
-     */
-    for (i=0; i<r; i++)
-    {
-         nmod_poly_zero(nmod_poly_mat_entry(K, i, 0));
-    }
-    nmod_poly_set_coeff_ui(nmod_poly_mat_entry(K, 1, 0), 0, 1);
-
-
-    double time=0.0;
-    clock_t ttime;
-    
-
-
-    /** Main loop, for the n-1 new colmuns of K
-     *  ---------------------------------------
-     */
-
-    slong D=0;
-
-    for (int k=0; k<n-1; k++)
-    {
-
-        ttime=clock();
-
-        for (i=0; i<r; i++)
-        {
-            nmod_poly_set(nmod_poly_mat_entry(tempN, i, 0),nmod_poly_mat_entry(K, i, k));
-        }
-
-
-        /** TO CHECK
-         *  ********
-         * 
-         *  we add the degree (2r-2)d + (d-1) = (2r-1)d -1 for M^* and Y  (temporarily) 
-         *    when we apply T, (2r-1)d-1 is ok (bounds the x-degree of the resultant, btw)
-         *  and then, afterwards, we will recover the degree of phi1 by simplification
-         * 
-         */
-
-        D = k*deg_phi1 + (2*r-1)*d -1; 
-
-        nmod_apply_T(temp, tempN, CT, PT, D);
-
-        for (i=0; i<r; i++)
-        {
-
-            nmod_poly_div(nmod_poly_mat_entry(K, i, k+1), nmod_poly_mat_entry(temp, i, 0),g);
-
-            nmod_poly_derivative(p1,nmod_poly_mat_entry(K, i, k));
-            nmod_poly_mul(p1,p1,phi1);
-
-
-            nmod_poly_mul(p2,dphi1,nmod_poly_mat_entry(K, i, k));
-            nmod_poly_scalar_mul_nmod(p2,p2,k);
-
-            nmod_poly_add(nmod_poly_mat_entry(K, i, k+1),nmod_poly_mat_entry(K, i, k+1),p1);
-
-            nmod_poly_sub(nmod_poly_mat_entry(K, i, k+1),nmod_poly_mat_entry(K, i, k+1),p2);
-        }
-
-        time = (double)(clock()-ttime) / CLOCKS_PER_SEC;
-        flint_printf("\n K: %ld-th column: %.3f sec.\n", k+2, time);
-
-    } // main loop on the columns of K 
-
-    nmod_poly_mat_clear(temp);
-    nmod_poly_mat_clear(tempN);
-        
-
-    nmod_poly_clear(g);
-    nmod_poly_clear(dphi1);
-    nmod_poly_clear(p1);
-    nmod_poly_clear(p2);
-}
+/* nmod_pseudo_Krylov has moved to algeqtodiffeq_reference.c (2026-09-17,
+ * per the user), grouped there with its own project-owned caller
+ * nmod_pseudo_Krylov_naive_delta -- relocation only (its one debug
+ * flint_printf was dropped along the way, same as iterative_pseudo_krylov's
+ * own relocation; no other behavior change). Still called from here by
+ * nmod_algeq_to_diffeq below (kept alive for ../work-algeqtodiffeq), via
+ * the unchanged declaration in gfun.h -- linking across this module's .c
+ * files within the same library is unaffected by which file a definition
+ * lives in. See algeqtodiffeq_reference.c and claude-pseudoKrylov/todo.md. */
 
 
 
@@ -1079,9 +968,7 @@ slong nmod_algeq_to_diffeq_series_phi1(nmod_poly_mat_t LT, const nmod_poly_mat_t
     //     extra_guessed =  ceil(  ((double) (k-1)*(nmod_poly_degree(Delta)-d))   / ((double) r-1)   );   
     //     target_degree += extra_guessed; 
     // }
-   
 
-   
 
     slong sigma;
 

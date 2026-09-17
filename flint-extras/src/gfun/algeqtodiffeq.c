@@ -467,7 +467,7 @@ void nmod_algeqtodiffeq_rescale_by_phi1(nmod_poly_t phi1, nmod_poly_mat_t CT,
  *  Why this checks width(T) <= 1: phi_1 | phi_2 always (Sec. 3.1), with
  *  equality iff width(T) <= 1 (the width is the first index where the
  *  determinantal-denominator sequence stops growing). So `deg(phi1) ==
- *  deg(phi2)` (comparing degrees, as nmod_pseudo_Krylov_width1
+ *  deg(phi2)` (comparing degrees, as _nmod_algeq_to_diffeq_width1
  *  (algeqtodiffeq_width1.c) does with this function's output) is a
  *  direct, meaningful width-1 check -- confirmed empirically 2026-09-15
  *  while testing find_uv: for a P where this comparison disagrees,
@@ -476,7 +476,7 @@ void nmod_algeqtodiffeq_rescale_by_phi1(nmod_poly_t phi1, nmod_poly_mat_t CT,
  *  100% of the time, deterministically, exactly as expected for a genuine
  *  width > 1 instance -- not a bug in find_uv, a violated precondition.
  *  Per the user: width <= 1 is only a generic property of algeqtodiffeq's
- *  T, never guaranteed for a given P; nmod_pseudo_Krylov_width1
+ *  T, never guaranteed for a given P; _nmod_algeq_to_diffeq_width1
  *  flint_throw's on failure (2026-09-16, per the user's decision) --
  *  the old draft (nmod_algeq_to_diffeq_new, superseded) only printed a
  *  message and continued regardless. See claude-pseudoKrylov/todo.md.
