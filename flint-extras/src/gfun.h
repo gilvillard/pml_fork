@@ -58,6 +58,47 @@ static inline slong nmod_gfun_delta_T_degree_bound(slong r, slong d)
 #define NMOD_GFUN_NONPROPER_MARGIN 8
 
 
+/** Additive margin on the target degree for a description of the PSEUDO-KRYLOV
+ *  construction as a whole -- currently K, in algeqtodiffeq_series.c. Split out
+ *  2026-09-18, per the user: it had been sharing NMOD_GFUN_NONPROPER_MARGIN's
+ *  name and value while covering something else entirely.
+ *
+ *  The distinction is NOT "degree margin vs evaluation-points margin" -- that
+ *  was the first, wrong reading of it, corrected by the user the same day.
+ *  NMOD_GFUN_NONPROPER_MARGIN belongs in degree bounds too:
+ *  nmod_algeqtodiffeq_T_left_description (algeqtodiffeq_recursive.c) uses it
+ *  for the target degree of a description of T, and that IS a properness
+ *  question -- how far T's own degree may exceed what the properness-assuming
+ *  bound predicts. It should keep using NMOD_GFUN_NONPROPER_MARGIN.
+ *
+ *  What THIS constant covers is different in kind: the degree of a description
+ *  of the whole pseudo-Krylov machine -- K built through n applications of
+ *  theta, with power-series truncation and an inverse series along the way --
+ *  whose degree uncertainty does not reduce to T's properness.
+ *
+ *  The failure modes also differ, which is a useful check on which constant you
+ *  are reaching for:
+ *   - too small a NONPROPER margin in an evaluation bound => nmod_apply_T
+ *     aliases and silently returns a WRONG polynomial (see its doc above);
+ *   - too small a margin on a description's target degree => no row passes the
+ *     shift[i] <= target_degree filter and the caller flint_throw's "no
+ *     description of degree at most ... found" -- loud, not silent.
+ *
+ *  Same heuristic status as its sibling: a value that works in practice, not a
+ *  derived bound. MAIN TODO (per the user) is to expose target_degree as a
+ *  caller-supplied parameter rather than always deriving it internally --
+ *  see claude-pseudoKrylov/todo.md.
+ *
+ *  LOAD-BEARING: nmod_pseudo_Krylov_series and
+ *  nmod_algeqtodiffeq_series_left_description (algeqtodiffeq_series.c) must
+ *  compute target_degree/sigma by the SAME formula -- that identity is exactly
+ *  what guarantees K's own precision suffices for the description later built
+ *  from it, with no precision bookkeeping needed between the two phases.
+ *  Change one, change the other.
+ */
+#define NMOD_GFUN_DESCRIPTION_MARGIN 8
+
+
 /**
  *    Assume that the degree r in the second variable, say y, is the row dimension - 1 of PT
  */

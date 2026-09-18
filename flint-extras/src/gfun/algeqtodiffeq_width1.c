@@ -106,7 +106,14 @@ void find_uv(nmod_poly_mat_t U, nmod_poly_mat_t V, const nmod_poly_t phi1,
     ulong prime = nmod_poly_mat_modulus(PT);
     slong r = (PT->r) - 1;
     slong d = nmod_poly_mat_degree(PT);
-    slong D = nmod_gfun_delta_T_degree_bound(r, d);
+    /* Margin for the same reason as nmod_width1_description's D below: the
+     * properness-derived bound is exactly the degree phi1*T(e_j) reaches here
+     * (the operands are constant basis vectors), so it carries no cushion for
+     * an input where T is not exactly proper -- and nmod_apply_T aliases
+     * silently rather than raising. Unlike the description loop's bound, this
+     * one's headroom has not actually been measured; added 2026-09-18 on the
+     * same reasoning, per the user. */
+    slong D = nmod_gfun_delta_T_degree_bound(r, d) + NMOD_GFUN_NONPROPER_MARGIN;
 
     /* Local, phi1-scaled working copy of CT -- see the optimization note
      * above. CT itself (the parameter) is not modified. */
@@ -311,11 +318,19 @@ void nmod_width1_description(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong
         nmod_poly_set(nmod_poly_mat_entry(CT_phi1, i, 0), nmod_poly_mat_entry(CT, i, 0));
     nmod_algeqtodiffeq_rescale_CT_by_phi1(CT_phi1, PT, Delta, phi1);
 
-    /* Bound for phi1*T(N_{j-1}) via nmod_apply_T -- not re-derived here,
-     * same "every D bound in this module is a to-check estimate" caveat
-     * as elsewhere (claude-pseudoKrylov/todo.md); numerically identical to
-     * the draft's own (2*r-1)*d + deg(phi1) - 1. */
-    slong D = nmod_gfun_delta_T_degree_bound(r, d) + deg_phi1;
+    /* Bound for phi1*T(N_{j-1}) via nmod_apply_T. The properness-derived part,
+     * (2*r-1)*d - 1 + deg(phi1) (= 2*deg(phi1) - 1 generically), is exactly
+     * algos.pdf's own ceiling for this quantity (Prop. 3.2's proof:
+     * deg(Delta*theta(N_i)) < 2*delta) -- and it is TIGHT, not conservative:
+     * measured slack is a constant 3 coefficients at r,d = 8,5 / 12,8 / 20,12
+     * (claude-pseudoKrylov/experiments/bench-applyT-breakdown.c, 2026-09-18),
+     * i.e. 98-99.7% of D is actually used, more so as sizes grow. Since
+     * nmod_apply_T's geometric evaluation has NO bounds checking -- exceeding
+     * D aliases silently into a wrong answer rather than raising (see
+     * NMOD_GFUN_NONPROPER_MARGIN's own doc in gfun.h) -- those 3 coefficients
+     * are no cushion at all for an input where T is not exactly proper, which
+     * is what the margin covers. */
+    slong D = nmod_gfun_delta_T_degree_bound(r, d) + deg_phi1 + NMOD_GFUN_NONPROPER_MARGIN;
 
     /* Column 0 (paper's N_1, D's beta_{1,1}): the base case, given
      * directly rather than computed. */
@@ -499,12 +514,36 @@ slong _nmod_algeq_to_diffeq_width1(nmod_poly_mat_t Y, const nmod_poly_mat_t a, c
             nmod_poly_set(nmod_poly_mat_entry(P, n1 + i, n1 + 1 + j), nmod_poly_mat_entry(F, i, j));
         }
 
-    /* Nullspace of P: W = [Z^T Y^T]^T (Lemma 3.8), Y = W's last n1 rows. */
+    /* Nullspace of P: W = [Z^T Y^T]^T (Lemma 3.8), Y = W's last n1 rows.
+     *
+     * `shift` is an explicit ZEROED array, not NULL (changed 2026-09-18, per
+     * the user, measured by claude-pseudoKrylov/experiments/
+     * bench-width1-kernel-shift.c). NULL does not mean "zero shift": per
+     * nmod_poly_mat_kernel.h it means weak Popov with respect to pmat's own
+     * COLUMN degrees here (COL_UPPER = right kernel), and P's column degrees
+     * run from 0 (its first column, essentially the lone 1 entry) up to
+     * deg(phi1) -- a strongly non-uniform shift, the kind that inflates this
+     * computation. Uniform zero measured 5-8% faster on the identical P at
+     * r,d = 8,5 / 12,8 / 16,10, stable across trials.
+     *
+     * Same answer either way, and not merely "a different valid basis":
+     * generically nz = 1, so the kernel is one-dimensional and its basis
+     * vector is unique up to a scalar whatever the shift -- verified equal
+     * (after normalization) on every trial.
+     *
+     * Length is 2*n1 = ncols(P), the COL_UPPER convention (the doc's
+     * "number of rows" wording describes the left-kernel orientation).
+     * shift is in/out -- the call overwrites it with the output shifted
+     * degrees -- so it is freshly zeroed here and not reused as an input. */
     slong *pivind = flint_malloc(2 * n1 * sizeof(slong));
+    slong *shift = flint_malloc(2 * n1 * sizeof(slong));
+    for (slong i = 0; i < 2 * n1; i++)
+        shift[i] = 0;
     nmod_poly_mat_t W;
     nmod_poly_mat_init(W, 2 * n1, 2 * n1, prime);
-    slong nz = nmod_poly_mat_kernel(W, pivind, NULL, P, ORD_WEAK_POPOV, COL_UPPER);
+    slong nz = nmod_poly_mat_kernel(W, pivind, shift, P, ORD_WEAK_POPOV, COL_UPPER);
     flint_free(pivind);
+    flint_free(shift);
 
     for (slong i = 0; i < n1; i++)
         for (slong j = 0; j < n1; j++)

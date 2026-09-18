@@ -305,7 +305,13 @@ void nmod_phi1(nmod_poly_t phi1, const nmod_poly_mat_t CT,
     ulong prime = nmod_poly_mat_modulus(PT);
     slong r = (PT->r) - 1;
     slong d = nmod_poly_mat_degree(PT);
-    slong D = nmod_gfun_delta_T_degree_bound(r, d);
+    /* Margin (see NMOD_GFUN_NONPROPER_MARGIN's doc in gfun.h): the
+     * properness-derived bound is exactly the degree Delta*T(z) reaches for a
+     * constant z, so it has no cushion for an input where T is not exactly
+     * proper -- and nmod_apply_T aliases silently rather than raising. Added
+     * 2026-09-18 per the user, same reasoning (and same "headroom not actually
+     * measured" caveat) as find_uv's in algeqtodiffeq_width1.c. */
+    slong D = nmod_gfun_delta_T_degree_bound(r, d) + NMOD_GFUN_NONPROPER_MARGIN;
 
     nmod_poly_mat_t randz, Bz;
     nmod_poly_mat_init(randz, r, 1, prime);
@@ -386,7 +392,17 @@ void nmod_algeqtodiffeq_setup(nmod_poly_t Delta, nmod_poly_mat_t iPyT,
         nmod_poly_scalar_mul_nmod(nmod_poly_mat_entry(PxT, i, 0), nmod_poly_mat_entry(PxT, i, 0), prime - 1);
     }
 
-    slong D = nmod_gfun_delta_T_degree_bound(r, d);
+    /* Margin, added 2026-09-18 per the user, completing the pass over this
+     * module's properness-derived bounds (find_uv, nmod_width1_description,
+     * nmod_phi1, nmod_phi_T, and now here). This is the most consequential of
+     * them: D bounds CT itself, which every family consumes, so a bound that
+     * is too small for a not-exactly-proper T corrupts everything downstream
+     * silently (nmod_biv_mulmod_geometric aliases rather than raising, same
+     * as nmod_apply_T -- see NMOD_GFUN_NONPROPER_MARGIN's doc in gfun.h).
+     * Note the bound here is the same formula but a different quantity: it
+     * bounds C = -Px*(Py^-1 mod P)*Delta, not Delta*T(v) -- gfun.h's doc
+     * covers both ("same shape of bound"). */
+    slong D = nmod_gfun_delta_T_degree_bound(r, d) + NMOD_GFUN_NONPROPER_MARGIN;
 
     nmod_poly_mat_init(CT, r, 1, prime);
     nmod_biv_mulmod_geometric(CT, PxT, iPyT, PT, D);
@@ -492,7 +508,13 @@ void nmod_phi_T(nmod_poly_t phi1, nmod_poly_t phi2, const nmod_poly_mat_t CT,
     ulong prime = nmod_poly_mat_modulus(PT);
     slong r = (PT->r) - 1;
     slong d = nmod_poly_mat_degree(PT);
-    slong D = nmod_gfun_delta_T_degree_bound(r, d);
+    /* Margin: same reasoning as nmod_phi1's above (both apply T to constant
+     * random vectors at exactly the properness bound, so neither has any
+     * cushion if T is not exactly proper, and nmod_apply_T aliases silently
+     * rather than raising). Added 2026-09-18 per the user. Harmless for the
+     * phi2 branch below: the extra points change only the bound, not the
+     * interpolated values, so the exact division by Delta stays exact. */
+    slong D = nmod_gfun_delta_T_degree_bound(r, d) + NMOD_GFUN_NONPROPER_MARGIN;
 
     nmod_poly_mat_t randT1, randT2;
     nmod_poly_mat_init(randT1, r, 1, prime);
