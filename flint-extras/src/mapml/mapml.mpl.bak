@@ -34,7 +34,8 @@ mapml:= module()
 			`mod/PMBasis`,`mod/RowPMBasis`,
 			`mod/RightDescription`,`mod/LeftDescription`,
 			`mod/Kernel`,`mod/RowKernel`,`mod/PMNullspace`,`mod/Algeq2diffeqSeriesLeft`,
-			`mod/Algeq2diffeqNaive`,`mod/Algeq2diffeqWidth1`,`mod/Algeq2diffeqRecursive`;
+			`mod/Algeq2diffeqNaive`,`mod/Algeq2diffeqWidth1`,`mod/Algeq2diffeqRecursive`,
+			`mod/SymprodNaive`,`mod/SymprodSeries`,`mod/SymprodRecursive`;
 
 	option package, load=Init, unload=End: 
 	
@@ -68,7 +69,7 @@ mapml:= module()
     printf("external %s\n",pml_lib);
 	ff:=define_external("nmod_poly_mat_init", MAPLE, LIB = pml_lib):
 
-	printf("[MDeterminant, WeakPopov, RowWeakPopov, PMBasis, MBasis, RowPMBasis, RowMBasis,RightDescription, LeftDescription, Kernel, RowKernel, PMNullspace, Algeq2diffeqNaive, Algeq2diffeqWidth1, Algeq2diffeqSeriesLeft, Algeq2diffeqRecursive]");
+	printf("[MDeterminant, WeakPopov, RowWeakPopov, PMBasis, MBasis, RowPMBasis, RowMBasis,RightDescription, LeftDescription, Kernel, RowKernel, PMNullspace, Algeq2diffeqNaive, Algeq2diffeqWidth1, Algeq2diffeqSeriesLeft, Algeq2diffeqRecursive, SymprodNaive, SymprodSeries, SymprodRecursive]");
 		
 
 	# Local functions for conversions
@@ -91,7 +92,7 @@ mapml:= module()
 	    description "YYY";
 
 		export polynomial_rt,polymat_rt, matpoly_rt, pm_determinant, pm_diff_mbasis, pm_matrix_mbasis, pm_matrix_pmbasis,pm_coeffs,pm_weakpopov,pm_kernel,pm_row_kernel,pm_nullspace,pm_algeq2diffeq_series_left,
-		pm_algeq2diffeq_width1,pm_algeq2diffeq_naive,pm_algeq2diffeq_recursive;					
+		pm_algeq2diffeq_width1,pm_algeq2diffeq_naive,pm_algeq2diffeq_recursive,pm_symprod_naive,pm_symprod_series,pm_symprod_recursive;					
 
 		polynomial_rt := define_external("polynomial_rt",MAPLE, LIB = mapml_lib);
 
@@ -124,6 +125,12 @@ mapml:= module()
 		pm_algeq2diffeq_naive := define_external("pm_algeq2diffeq_naive",MAPLE, LIB = mapml_lib);
 
 		pm_algeq2diffeq_recursive := define_external("pm_algeq2diffeq_recursive",MAPLE, LIB = mapml_lib);
+
+		pm_symprod_naive := define_external("pm_symprod_naive",MAPLE, LIB = mapml_lib);
+
+		pm_symprod_series := define_external("pm_symprod_series",MAPLE, LIB = mapml_lib);
+
+		pm_symprod_recursive := define_external("pm_symprod_recursive",MAPLE, LIB = mapml_lib);
 
 	end module: 	
 
@@ -344,6 +351,119 @@ mapml:= module()
 		vect_A:=map(t->PolynomialTools:-CoefficientVector(t,x),A);
 
 		res:=Dev:-pm_algeq2diffeq_recursive(vect_A, n, q);
+
+		res := map(t->PolynomialTools:-FromCoefficientList(t, x), res[2]);
+
+		return res;
+
+	end proc:
+
+	# Symmetric product L1 (x) L2 (G2026.pdf Sec. 5), naive pseudo-Krylov route.
+	# L1, L2: polynomials in x and y, y standing for d/dx. n: pseudo-Krylov
+	# matrix width, same convention as Algeq2diffeqNaive -- generically
+	# n = r1*r2 + 1 gives one solution, r_i = degree(L_i,y). Returns the n x nz
+	# matrix of solutions, row l+1 holding the coefficient of d^l.
+	# Usage: SymprodNaive(L1, L2, x, y, n) mod q
+	`mod/SymprodNaive`:=proc(L1,L2,x,y,n,q) local r1, r2, i, A1, A2, t, vect_A1, vect_A2, res;
+
+		r1:=degree(L1,y);
+		r2:=degree(L2,y);
+
+		A1:=Matrix(r1+1,1);
+		for i from 0 to r1 do
+			A1[i+1,1]:=coeff(expand(L1),y,i):
+		od:
+
+		A2:=Matrix(r2+1,1);
+		for i from 0 to r2 do
+			A2[i+1,1]:=coeff(expand(L2),y,i):
+		od:
+
+		A1:=map(t->modp(expand(t),q),A1);
+		A2:=map(t->modp(expand(t),q),A2);
+
+		vect_A1:=map(t->PolynomialTools:-CoefficientVector(t,x),A1);
+		vect_A2:=map(t->PolynomialTools:-CoefficientVector(t,x),A2);
+
+		res:=Dev:-pm_symprod_naive(vect_A1, vect_A2, n, q);
+
+		res := map(t->PolynomialTools:-FromCoefficientList(t, x), res[2]);
+
+		return res;
+
+	end proc:
+
+	# Symmetric product L1 (x) L2, series route: same arguments and result as
+	# SymprodNaive. Expands at x = 0, so needs l1(0)*l2(0) <> 0 mod q (l_i the
+	# leading coefficients in y) -- checked here, since the C side would abort
+	# the whole session instead. Its target degree is calibrated for generic
+	# inputs, r1, r2 >= 2 and n = r1*r2 + 1.
+	# Usage: SymprodSeries(L1, L2, x, y, n) mod q
+	`mod/SymprodSeries`:=proc(L1,L2,x,y,n,q) local r1, r2, i, A1, A2, t, vect_A1, vect_A2, res;
+
+		r1:=degree(L1,y);
+		r2:=degree(L2,y);
+
+		A1:=Matrix(r1+1,1);
+		for i from 0 to r1 do
+			A1[i+1,1]:=coeff(expand(L1),y,i):
+		od:
+
+		A2:=Matrix(r2+1,1);
+		for i from 0 to r2 do
+			A2[i+1,1]:=coeff(expand(L2),y,i):
+		od:
+
+		A1:=map(t->modp(expand(t),q),A1);
+		A2:=map(t->modp(expand(t),q),A2);
+
+		if eval(A1[r1+1,1], x=0) = 0 or eval(A2[r2+1,1], x=0) = 0 then
+			error "x = 0 is a singular point (l1(0)*l2(0) = 0 mod %1); the series route expands at 0", q;
+		fi:
+
+		vect_A1:=map(t->PolynomialTools:-CoefficientVector(t,x),A1);
+		vect_A2:=map(t->PolynomialTools:-CoefficientVector(t,x),A2);
+
+		res:=Dev:-pm_symprod_series(vect_A1, vect_A2, n, q);
+
+		res := map(t->PolynomialTools:-FromCoefficientList(t, x), res[2]);
+
+		return res;
+
+	end proc:
+
+	# Symmetric product L1 (x) L2, recursive route (Algorithm 6): same arguments
+	# and result as SymprodNaive. Needs n >= 2 -- checked here, since the C side
+	# would abort the whole session instead. Specified for proper T
+	# (degree of every coefficient <= degree of the leading one); runs on any
+	# input, but for non-proper T its degree bounds may not hold.
+	# Usage: SymprodRecursive(L1, L2, x, y, n) mod q
+	`mod/SymprodRecursive`:=proc(L1,L2,x,y,n,q) local r1, r2, i, A1, A2, t, vect_A1, vect_A2, res;
+
+		if n < 2 then
+			error "n must be >= 2 (n is the pseudo-Krylov matrix width, generically degree(L1,y)*degree(L2,y) + 1), got %1", n;
+		fi:
+
+		r1:=degree(L1,y);
+		r2:=degree(L2,y);
+
+		A1:=Matrix(r1+1,1);
+		for i from 0 to r1 do
+			A1[i+1,1]:=coeff(expand(L1),y,i):
+		od:
+
+		A2:=Matrix(r2+1,1);
+		for i from 0 to r2 do
+			A2[i+1,1]:=coeff(expand(L2),y,i):
+		od:
+
+		A1:=map(t->modp(expand(t),q),A1);
+		A2:=map(t->modp(expand(t),q),A2);
+
+		vect_A1:=map(t->PolynomialTools:-CoefficientVector(t,x),A1);
+		vect_A2:=map(t->PolynomialTools:-CoefficientVector(t,x),A2);
+
+		res:=Dev:-pm_symprod_recursive(vect_A1, vect_A2, n, q);
 
 		res := map(t->PolynomialTools:-FromCoefficientList(t, x), res[2]);
 

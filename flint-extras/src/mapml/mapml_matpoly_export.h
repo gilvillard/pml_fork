@@ -171,6 +171,15 @@ ALGEB pm_algeq2diffeq_width1(MKernelVector kv, ALGEB *args);
 
 ALGEB pm_algeq2diffeq_recursive(MKernelVector kv, ALGEB *args);
 
+// Symmetric product L1 (x) L2, naive route (gfun/symprod_naive.c)
+ALGEB pm_symprod_naive(MKernelVector kv, ALGEB *args);
+
+// Symmetric product L1 (x) L2, series route (gfun/symprod_series.c)
+ALGEB pm_symprod_series(MKernelVector kv, ALGEB *args);
+
+// Symmetric product L1 (x) L2, recursive route (gfun/symprod_recursive.c)
+ALGEB pm_symprod_recursive(MKernelVector kv, ALGEB *args);
+
 #ifdef __cplusplus
 }
 #endif

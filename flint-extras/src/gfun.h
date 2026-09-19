@@ -83,6 +83,17 @@ static inline slong nmod_gfun_delta_T_degree_bound(slong r, slong d)
  *   - too small a margin on a description's target degree => no row passes the
  *     shift[i] <= target_degree filter and the caller flint_throw's "no
  *     description of degree at most ... found" -- loud, not silent.
+ *     But the OPPOSITE mistake is silent: a target that is large relative to the
+ *     approximant order sigma lets spurious approximant rows through the filter,
+ *     and a caller keeping "the first R rows that pass" returns a wrong result
+ *     without any error. sigma must exceed target + (max column degree of a right
+ *     description), not just ~2*target. Found 2026-09-19 in the symprod series
+ *     route (now guarded). The algeqtodiffeq series route uses the same
+ *     ~2*target recipe and first-R selection but was checked SAFE (11 shapes,
+ *     d up to 60, r up to 20): its target deg(phi1) + margin is NOT divided,
+ *     and its right description's max column degree was exactly deg(phi1), so
+ *     sigma exceeds target + deg(phi1) by target/r + margin whatever the degrees
+ *     (observed, not proved).
  *
  *  Same heuristic status as its sibling: a value that works in practice, not a
  *  derived bound. MAIN TODO (per the user) is to expose target_degree as a
@@ -543,6 +554,88 @@ void  fmpz_to_nmod_poly_mat(nmod_poly_mat_t PT, const fmpz_poly_mat_t PZT);
 
 // One column
 void  nmod_to_fmpz_poly_mat(fmpz_poly_mat_t PZT, const nmod_poly_mat_t PT);
+
+
+/**  Symmetric product L1 (x) L2 (G2026.pdf Sec. 5, s = 2)
+ *   ----------------------------------------------------
+ *
+ *   T = C1 (x) I_{r2} + I_{r1} (x) C2, never formed. L_i is an (r_i+1) x 1
+ *   nmod_poly_mat of coefficients p_{i,0..r_i}; vectors on the basis
+ *   alpha1^(h) alpha2^(p) are (r1*r2) x 1, index h*r2 + p. Implementation and
+ *   full doc in gfun/symprod.c.
+ */
+
+/* phi = lcm(l1, l2), m1 = phi/l1, m2 = phi/l2 (l_i the leading coefficients). */
+void nmod_symprod_setup(nmod_poly_t phi, nmod_poly_t m1, nmod_poly_t m2,
+                        const nmod_poly_mat_t L1, const nmod_poly_mat_t L2);
+
+/* R = phi*T(V); R must not alias V. */
+void nmod_symprod_apply_T(nmod_poly_mat_t R, const nmod_poly_mat_t V,
+                          const nmod_poly_mat_t L1, const nmod_poly_mat_t L2,
+                          const nmod_poly_t phi, const nmod_poly_t m1, const nmod_poly_t m2);
+
+/* Naive route, gfun/symprod_naive.c. K is (r1 r2) x n, column k =
+ * phi^k * theta^k(e_1); n >= 1. */
+void nmod_symprod_pseudo_Krylov_naive(nmod_poly_mat_t K, ulong n,
+                                      const nmod_poly_mat_t L1, const nmod_poly_mat_t L2,
+                                      const nmod_poly_t phi, const nmod_poly_t m1,
+                                      const nmod_poly_t m2);
+
+/* L1 (x) L2 via the naive route. Returns nz; LT is n x n, its first nz columns
+ * are solutions (operator coefficients, increasing order in d). Generically
+ * n = r1*r2 + 1 gives nz = 1. */
+slong nmod_symprod_naive(nmod_poly_mat_t LT, const nmod_poly_mat_t L1,
+                         const nmod_poly_mat_t L2, const slong n);
+
+/* Series route, gfun/symprod_series.c. The target degree is calibrated for
+ * GENERIC inputs, r1, r2 >= 2 and n = r1*r2 + 1 only (for r_i = 1 it
+ * underestimates by 1-2, absorbed by the margin); a too-small target throws.
+ * sigma = target + d1*r2 + d2*r1 + 1 accounts for the right description of K;
+ * the earlier ~2*target+1 returned wrong operators SILENTLY at moderate degrees
+ * (fixed 2026-09-19), and the description now throws if more than R rows pass. */
+void nmod_symprod_series_parameters(slong * target_degree, slong * sigma, slong * N,
+                                    const nmod_poly_mat_t L1, const nmod_poly_mat_t L2,
+                                    const slong n);
+
+/* Rv = T(V) mod x^N, il_i = 1/l_i mod x^N; Rv must not alias V. */
+void nmod_symprod_apply_T_series(nmod_poly_mat_t Rv, const nmod_poly_mat_t V,
+                                 const nmod_poly_mat_t L1, const nmod_poly_mat_t L2,
+                                 const nmod_poly_t il1, const nmod_poly_t il2, const slong N);
+
+/* K ((r1 r2) x n), column k = theta^k(e_1) mod x^prec; returns prec. Needs
+ * l1(0)*l2(0) != 0. */
+slong nmod_symprod_pseudo_Krylov_series(nmod_poly_mat_t K,
+                                        const nmod_poly_mat_t L1, const nmod_poly_mat_t L2,
+                                        const slong n, const slong N);
+
+/* D*K = N from an approximant basis at order sigma, rows of degree <= target_degree. */
+void nmod_symprod_series_left_description(nmod_poly_mat_t N, nmod_poly_mat_t D,
+                                          const nmod_poly_mat_t K,
+                                          const slong target_degree, const slong sigma);
+
+/* L1 (x) L2 via the series route; same output convention as nmod_symprod_naive. */
+slong nmod_symprod_series(nmod_poly_mat_t LT, const nmod_poly_mat_t L1,
+                          const nmod_poly_mat_t L2, const slong n);
+
+/* Recursive route (Algorithm 6), gfun/symprod_recursive.c. Specified for
+ * PROPER T (deg p_{i,j} <= deg l_i); runs on any input, but for non-proper T
+ * the degree bounds and specifications may not hold. */
+void nmod_symprod_T_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P,
+                                     const nmod_poly_mat_t L1, const nmod_poly_mat_t L2,
+                                     const nmod_poly_t phi, const nmod_poly_t m1,
+                                     const nmod_poly_t m2);
+
+/* [theta(a) ... theta^m(a)] = D^{-1}N; D R x R, N R x m, a R x 1. */
+void nmod_symprod_pseudo_krylov_description(nmod_poly_mat_t D, nmod_poly_mat_t N,
+                                            const nmod_poly_mat_t L1, const nmod_poly_mat_t L2,
+                                            const nmod_poly_t phi, const nmod_poly_t m1,
+                                            const nmod_poly_t m2,
+                                            const nmod_poly_mat_t a, const slong m);
+
+/* L1 (x) L2 via the recursive route; same output convention as
+ * nmod_symprod_naive; n >= 2. */
+slong nmod_symprod_recursive(nmod_poly_mat_t LT, const nmod_poly_mat_t L1,
+                             const nmod_poly_mat_t L2, const slong n);
 
 
 #endif // GFUN_H

@@ -860,13 +860,148 @@ ALGEB pm_algeq2diffeq_recursive(MKernelVector kv, ALGEB *args){
     nmod_poly_mat_t kernz;
     nmod_poly_mat_window_init(kernz, LT, 0, 0, n, nz);
 
-   
+
     ALGEB res= MapleListAlloc(kv,2);
     MapleListAssign(kv,res,1,ToMapleInteger(kv,nz));
     MapleListAssign(kv,res,2,nmod_poly_mat_to_algeb(kv,kernz));
 
     nmod_poly_mat_clear(LT);
     nmod_poly_mat_window_clear(kernz);
+
+    return res;
+
+}
+
+
+/* Symmetric product L1 (x) L2 (G2026.pdf Sec. 5), naive pseudo-Krylov route
+ * (nmod_symprod_naive, gfun/symprod_naive.c).
+ *   args[1], args[2]: coefficient vectors of L1, L2, (r_i+1) x 1, entry j being
+ *                     the coefficient of d^j
+ *   args[3]: n, the pseudo-Krylov matrix width, passed straight through
+ *            (generically n = r1*r2 + 1 gives one solution)
+ *   args[4]: modulus
+ * Returns [nz, the n x nz matrix of solutions]; row l of a solution is the
+ * coefficient of d^l. */
+ALGEB pm_symprod_naive(MKernelVector kv, ALGEB *args){
+
+    ALGEB vect1=args[1];
+    ALGEB vect2=args[2];
+
+    ulong n  = MapleToInteger64(kv,args[3]);
+
+    ulong modulus = MapleToInteger64(kv,args[4]);
+
+    nmod_poly_mat_t L1, L2;
+
+    get_nmod_poly_mat(L1, modulus, kv, vect1);
+    get_nmod_poly_mat(L2, modulus, kv, vect2);
+
+    nmod_poly_mat_t LT;
+    nmod_poly_mat_init(LT,n,n,modulus);
+
+    slong nz;
+
+    nz=nmod_symprod_naive(LT, L1, L2, n);
+
+    nmod_poly_mat_t kernz;
+    nmod_poly_mat_window_init(kernz, LT, 0, 0, n, nz);
+
+    ALGEB res= MapleListAlloc(kv,2);
+    MapleListAssign(kv,res,1,ToMapleInteger(kv,nz));
+    MapleListAssign(kv,res,2,nmod_poly_mat_to_algeb(kv,kernz));
+
+    nmod_poly_mat_window_clear(kernz);
+    nmod_poly_mat_clear(LT);
+    nmod_poly_mat_clear(L1);
+    nmod_poly_mat_clear(L2);
+
+    return res;
+
+}
+
+
+/* Symmetric product L1 (x) L2, series route (nmod_symprod_series,
+ * gfun/symprod_series.c). Same arguments and result as pm_symprod_naive.
+ * Needs l1(0)*l2(0) != 0 -- checked on the Maple side (mod/SymprodSeries),
+ * since nmod_symprod_series flint_throw's otherwise, which aborts the
+ * process. Its target degree is calibrated for generic inputs,
+ * r1, r2 >= 2 and n = r1*r2 + 1; a too-small target also throws. */
+ALGEB pm_symprod_series(MKernelVector kv, ALGEB *args){
+
+    ALGEB vect1=args[1];
+    ALGEB vect2=args[2];
+
+    ulong n  = MapleToInteger64(kv,args[3]);
+
+    ulong modulus = MapleToInteger64(kv,args[4]);
+
+    nmod_poly_mat_t L1, L2;
+
+    get_nmod_poly_mat(L1, modulus, kv, vect1);
+    get_nmod_poly_mat(L2, modulus, kv, vect2);
+
+    nmod_poly_mat_t LT;
+    nmod_poly_mat_init(LT,n,n,modulus);
+
+    slong nz;
+
+    nz=nmod_symprod_series(LT, L1, L2, n);
+
+    nmod_poly_mat_t kernz;
+    nmod_poly_mat_window_init(kernz, LT, 0, 0, n, nz);
+
+    ALGEB res= MapleListAlloc(kv,2);
+    MapleListAssign(kv,res,1,ToMapleInteger(kv,nz));
+    MapleListAssign(kv,res,2,nmod_poly_mat_to_algeb(kv,kernz));
+
+    nmod_poly_mat_window_clear(kernz);
+    nmod_poly_mat_clear(LT);
+    nmod_poly_mat_clear(L1);
+    nmod_poly_mat_clear(L2);
+
+    return res;
+
+}
+
+
+/* Symmetric product L1 (x) L2, recursive route (nmod_symprod_recursive,
+ * gfun/symprod_recursive.c, Algorithm 6). Same arguments and result as
+ * pm_symprod_naive. Needs n >= 2 -- checked on the Maple side
+ * (mod/SymprodRecursive), since nmod_symprod_recursive flint_throw's
+ * otherwise, which aborts the process. Specified for proper T
+ * (deg p_{i,j} <= deg l_i); runs on any input. */
+ALGEB pm_symprod_recursive(MKernelVector kv, ALGEB *args){
+
+    ALGEB vect1=args[1];
+    ALGEB vect2=args[2];
+
+    ulong n  = MapleToInteger64(kv,args[3]);
+
+    ulong modulus = MapleToInteger64(kv,args[4]);
+
+    nmod_poly_mat_t L1, L2;
+
+    get_nmod_poly_mat(L1, modulus, kv, vect1);
+    get_nmod_poly_mat(L2, modulus, kv, vect2);
+
+    nmod_poly_mat_t LT;
+    nmod_poly_mat_init(LT,n,n,modulus);
+
+    slong nz;
+
+    nz=nmod_symprod_recursive(LT, L1, L2, n);
+
+    nmod_poly_mat_t kernz;
+    nmod_poly_mat_window_init(kernz, LT, 0, 0, n, nz);
+
+    ALGEB res= MapleListAlloc(kv,2);
+    MapleListAssign(kv,res,1,ToMapleInteger(kv,nz));
+    MapleListAssign(kv,res,2,nmod_poly_mat_to_algeb(kv,kernz));
+
+    nmod_poly_mat_window_clear(kernz);
+    nmod_poly_mat_clear(LT);
+    nmod_poly_mat_clear(L1);
+    nmod_poly_mat_clear(L2);
 
     return res;
 
