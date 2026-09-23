@@ -519,7 +519,7 @@ ALGEB pm_weakpopov(MKernelVector kv, ALGEB *args){
     slong n = A ->r;
     slong pivind[n];
 
-    nmod_poly_mat_ordered_weak_popov_iter(A, shift, NULL, pivind, NULL, ROW_LOWER);
+    nmod_poly_mat_ordered_weak_popov_iter(A, shift, NULL, pivind, NULL, ROW_UPPER);
 
 
    // nmod_poly_mat_t M;
