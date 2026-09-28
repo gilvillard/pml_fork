@@ -88,12 +88,12 @@ static inline slong nmod_gfun_delta_T_degree_bound(slong r, slong d)
  *     and a caller keeping "the first R rows that pass" returns a wrong result
  *     without any error. sigma must exceed target + (max column degree of a right
  *     description), not just ~2*target. Found 2026-09-19 in the symprod series
- *     route (now guarded). The algeqtodiffeq series route uses the same
- *     ~2*target recipe and first-R selection but was checked SAFE (11 shapes,
- *     d up to 60, r up to 20): its target deg(phi1) + margin is NOT divided,
- *     and its right description's max column degree was exactly deg(phi1), so
- *     sigma exceeds target + deg(phi1) by target/r + margin whatever the degrees
- *     (observed, not proved).
+ *     route (now guarded). The algeqtodiffeq series route is guarded the same
+ *     way (throws if more than r rows pass). Its right description's max column
+ *     degree was exactly deg(phi1) in every shape measured, for any m >= r, so
+ *     its sigma clears target + deg(phi1) there (observed, not proved); for
+ *     m < r a target below deg(phi1) + margin would not, which is why its
+ *     target is never taken smaller than that.
  *
  *  Same heuristic status as its sibling: a value that works in practice, not a
  *  derived bound. For the algeqtodiffeq series route, target_degree, sigma and
@@ -493,8 +493,9 @@ slong nmod_pseudo_Krylov_series(nmod_poly_mat_t K, const nmod_poly_t phi1,
 /** target_degree, sigma and N for the series route, computed once and passed
  *  to nmod_pseudo_Krylov_series (N) and
  *  nmod_algeqtodiffeq_series_left_description (target_degree, sigma), so the
- *  two phases cannot disagree. r = deg_y P, n = width of K. See
- *  algeqtodiffeq_series.c for the formulas. */
+ *  two phases cannot disagree. r = deg_y P, n = width of K; target_degree =
+ *  ceil(max(n-1,r)*deg(phi1)/r) + NMOD_GFUN_DESCRIPTION_MARGIN. See
+ *  algeqtodiffeq_series.c for the rest. */
 void nmod_algeqtodiffeq_series_parameters(slong * target_degree, slong * sigma, slong * N,
                                           const nmod_poly_t phi1, const slong r, const slong n);
 

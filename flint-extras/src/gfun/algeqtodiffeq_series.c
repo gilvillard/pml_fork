@@ -81,19 +81,20 @@
  *   - N: power-series precision for nmod_pseudo_Krylov_series, sigma + (n-1),
  *     since each of its n-1 steps differentiates, losing one term.
  *
- *  target_degree = deg(phi1) + NMOD_GFUN_DESCRIPTION_MARGIN: a margin on the
- *  description degree of the PSEUDO-KRYLOV CONSTRUCTION AS A WHOLE -- K, built
- *  through n applications of theta with truncation and an inverse series along
- *  the way. That is why it is deliberately NOT NMOD_GFUN_NONPROPER_MARGIN
- *  (split 2026-09-18, per the user), which covers something different in kind:
- *  T itself failing to be exactly proper. See both docs in gfun.h. Calibrated
- *  for n = r+1; like every target_degree/margin in this module, a heuristic
- *  guess, not a derived bound.
+ *  target_degree = ceil(max(m,r)*deg(phi1)/r) + NMOD_GFUN_DESCRIPTION_MARGIN,
+ *  m = n-1: the McMillan degree of K, about m*deg(phi1), spread evenly over r
+ *  rows -- a generic guess, not a derived bound. For m <= r it is
+ *  deg(phi1) + margin, as before: shrinking it there makes sigma too small for
+ *  the right description of K (spurious rows pass, measured at d = 6). Past r
+ *  it undershoots the heavy rows d(2m-1) by about d(m/r-1), so the
+ *  description throws once that exceeds the margin.
+ *  NMOD_GFUN_DESCRIPTION_MARGIN, not NMOD_GFUN_NONPROPER_MARGIN: see gfun.h.
  */
 void nmod_algeqtodiffeq_series_parameters(slong * target_degree, slong * sigma, slong * N,
                                           const nmod_poly_t phi1, const slong r, const slong n)
 {
-    *target_degree = nmod_poly_degree(phi1) + NMOD_GFUN_DESCRIPTION_MARGIN;
+    slong mr = FLINT_MAX(n - 1, r);
+    *target_degree = (mr * nmod_poly_degree(phi1) + r - 1) / r + NMOD_GFUN_DESCRIPTION_MARGIN;
     slong minrn = FLINT_MIN(r, n);
     *sigma = ((r + n) * (*target_degree) + minrn - 1) / minrn + 1; /* ceil((r+n)*target_degree/min(r,n)) + 1 */
     *N = *sigma + (n - 1);
@@ -291,9 +292,10 @@ slong nmod_pseudo_Krylov_series(nmod_poly_mat_t K, const nmod_poly_t phi1,
  *  (not phi1, since there is no separate scaling factor to cancel here).
  *
  *  N, D must already be nmod_poly_mat_init'd by the caller (N r x n,
- *  D r x r). flint_throw's if no complete (r-row) description is found
- *  at this target_degree, matching this module's existing convention for
- *  construction failures (e.g. nmod_algeqtodiffeq_T_left_description).
+ *  D r x r). flint_throw's if fewer than r rows pass the target_degree
+ *  filter (no complete description) or more than r (ambiguous: sigma too
+ *  small), matching this module's existing convention for construction
+ *  failures (e.g. nmod_algeqtodiffeq_T_left_description).
  */
 void nmod_algeqtodiffeq_series_left_description(nmod_poly_mat_t N, nmod_poly_mat_t D,
                                                  const nmod_poly_mat_t K,
@@ -324,15 +326,21 @@ void nmod_algeqtodiffeq_series_left_description(nmod_poly_mat_t N, nmod_poly_mat
     nmod_poly_mat_init(ker, r + n, r + n, prime);
     nmod_poly_mat_pmbasis(ker, shift, B, sigma);
 
+    /* More than r rows passing means sigma is too small for target_degree:
+     * some are truncation artefacts, and keeping "the first r" would return
+     * a wrong description silently. */
     slong nbrows = 0;
-    for (slong i = 0; i < r + n && nbrows < r; i++)
+    for (slong i = 0; i < r + n; i++)
     {
         if (shift[i] <= target_degree)
         {
-            for (slong j = 0; j < r; j++)
-                nmod_poly_set(nmod_poly_mat_entry(D, nbrows, j), nmod_poly_mat_entry(ker, i, j));
-            for (slong j = 0; j < n; j++)
-                nmod_poly_set(nmod_poly_mat_entry(N, nbrows, j), nmod_poly_mat_entry(ker, i, j + r));
+            if (nbrows < r)
+            {
+                for (slong j = 0; j < r; j++)
+                    nmod_poly_set(nmod_poly_mat_entry(D, nbrows, j), nmod_poly_mat_entry(ker, i, j));
+                for (slong j = 0; j < n; j++)
+                    nmod_poly_set(nmod_poly_mat_entry(N, nbrows, j), nmod_poly_mat_entry(ker, i, j + r));
+            }
             nbrows++;
         }
     }
@@ -340,6 +348,10 @@ void nmod_algeqtodiffeq_series_left_description(nmod_poly_mat_t N, nmod_poly_mat
         flint_throw(FLINT_ERROR, "nmod_algeqtodiffeq_series_left_description: no complete "
                     "description of degree at most %wd found (target_degree too small?)\n",
                     target_degree);
+    if (nbrows > r)
+        flint_throw(FLINT_ERROR, "nmod_algeqtodiffeq_series_left_description: %wd rows of "
+                    "degree at most %wd, expected %wd (sigma %wd too small for target_degree)\n",
+                    nbrows, target_degree, r, sigma);
 
     flint_free(shift);
     nmod_poly_mat_clear(B);
