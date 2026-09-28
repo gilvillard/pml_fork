@@ -389,6 +389,26 @@ void nmod_pseudo_Krylov_recursive(nmod_poly_mat_t D, nmod_poly_mat_t N,
                                    const slong * s, const nmod_poly_mat_t a,
                                    const slong m);
 
+/** Same algorithm and same (D,N) as nmod_pseudo_Krylov_recursive above --
+ *  K = D^{-1}N is identical, only intermediate per-node bookkeeping
+ *  differs -- but keeps every internal "advance" node's (Qbar,Pbar) at
+ *  its absolute-minimal (zero-shift) degree along the way, instead of
+ *  letting it grow unboundedly past m past the module's own top-level
+ *  dimension (claude-pseudoKrylov/CLAUDE.md, "Degree growth past m=r, and
+ *  why it's mostly cosmetic", 2026-09-22). Does not change deg(D) (that
+ *  growth is real, a product of always-same-determinant-degree factors,
+ *  not removable this way) -- purely a node-level degree hygiene fix, not
+ *  a complexity improvement. See pseudo_krylov_recursive.c for the full
+ *  doc, including the one open caveat (the trigger's compatibility with
+ *  the next node's own shift-reducedness is observed, not proven, in
+ *  general).
+ */
+void nmod_pseudo_Krylov_recursive_renorm(nmod_poly_mat_t D, nmod_poly_mat_t N,
+                                          nmod_poly_mat_t Qt, nmod_poly_mat_t Pt,
+                                          const nmod_poly_mat_t Q, const nmod_poly_mat_t P,
+                                          const slong * s, const nmod_poly_mat_t a,
+                                          const slong m);
+
 /** Same recurrence as nmod_pseudo_Krylov_recursive above, via a plain
  *  O(m) sequential loop instead of divide-and-conquer -- a natural
  *  independent reference for testing it (same per-step formula, no

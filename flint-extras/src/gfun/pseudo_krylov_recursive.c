@@ -13,6 +13,7 @@
 #include <flint/nmod_poly.h>
 
 #include "nmod_poly_mat_extra.h"
+#include "nmod_poly_mat_forms.h"
 
 #include "gfun.h"
 
@@ -84,12 +85,28 @@
  *  Recursive case (m>1): splits into h = ceil(m/2) and m-h (Steps 2-3,
  *  7-8), with the "advance" (Steps 4-6) computed explicitly in between --
  *  see Lemma 4.2/4.3 and the inline comments below for the exact formulas.
+ *
+ *  Shared core of nmod_pseudo_Krylov_recursive and
+ *  nmod_pseudo_Krylov_recursive_renorm (below): when renorm is nonzero, at
+ *  every internal "advance" node (Step 6) whose raw (Qbar,Pbar) is no
+ *  longer minimal in the ABSOLUTE (zero-shift) sense -- i.e.
+ *  sum(rdeg_0(Qbar)) > deg_det_Q -- both are replaced in place by a
+ *  zero-shift weak Popov form (nmod_poly_mat_weak_popov_iter, the SAME
+ *  unimodular row operations applied to both, so Qbar^{-1}Pbar and hence
+ *  every output are completely unaffected). deg_det_Q is deg(det(Q)) of
+ *  the ORIGINAL top-level Q: det(Qbar) = det(Q) up to a unit at every node
+ *  (Lemma 4.2: each advance is a gauge transform of the same module, so
+ *  the determinant -- a module invariant -- never changes), which is
+ *  exactly why this is the right absolute-minimality threshold at every
+ *  depth, not just the top one. See nmod_pseudo_Krylov_recursive_renorm's
+ *  own doc for what this buys and its one open caveat.
  */
-void nmod_pseudo_Krylov_recursive(nmod_poly_mat_t D, nmod_poly_mat_t N,
-                                   nmod_poly_mat_t Qt, nmod_poly_mat_t Pt,
-                                   const nmod_poly_mat_t Q, const nmod_poly_mat_t P,
-                                   const slong * s, const nmod_poly_mat_t a,
-                                   const slong m)
+static void
+_nmod_pseudo_Krylov_recursive_core(nmod_poly_mat_t D, nmod_poly_mat_t N,
+                                    nmod_poly_mat_t Qt, nmod_poly_mat_t Pt,
+                                    const nmod_poly_mat_t Q, const nmod_poly_mat_t P,
+                                    const slong * s, const nmod_poly_mat_t a,
+                                    const slong m, int renorm, slong deg_det_Q)
 {
     ulong prime = nmod_poly_mat_modulus(Q);
     slong n = Q->r;
@@ -128,7 +145,7 @@ void nmod_pseudo_Krylov_recursive(nmod_poly_mat_t D, nmod_poly_mat_t N,
     nmod_poly_mat_init(N1, n, h, prime);
     nmod_poly_mat_init(Q1, n, n, prime);
     nmod_poly_mat_init(P1, n, n, prime);
-    nmod_pseudo_Krylov_recursive(D1, N1, Q1, P1, Q, P, s, a, h);
+    _nmod_pseudo_Krylov_recursive_core(D1, N1, Q1, P1, Q, P, s, a, h, renorm, deg_det_Q);
 
     /* Step 4: t = rdeg_s(D1) -- D1 describes K_h, distinct from (Q1,P1)
      * which describe theta_h itself (they coincide only when h=1). */
@@ -187,6 +204,30 @@ void nmod_pseudo_Krylov_recursive(nmod_poly_mat_t D, nmod_poly_mat_t N,
         }
     }
 
+    /* renorm (2026-09-28, tested in claude-pseudoKrylov/experiments/
+     * bench-recursive-degrees-renorm.c): if Qbar has stopped being
+     * absolute-minimal, bring it (and Pbar, with the same row operations)
+     * back to a zero-shift weak Popov form before threading them into the
+     * rest of the recursion. Conditional on the trigger firing -- an
+     * UNCONDITIONAL renormalization at every node was tested too and found
+     * to break t-reducedness of the accumulated D (see this function's own
+     * doc and nmod_pseudo_Krylov_recursive_renorm's below). */
+    if (renorm && deg_det_Q >= 0)
+    {
+        slong * rdeg0 = flint_malloc(n * sizeof(slong));
+        nmod_poly_mat_row_degree(rdeg0, Qbar, NULL);
+        slong sum_rdeg = 0;
+        for (slong i = 0; i < n; i++)
+            sum_rdeg += rdeg0[i];
+        if (sum_rdeg > deg_det_Q)
+        {
+            slong * pivind = flint_malloc((n + 1) * sizeof(slong));
+            nmod_poly_mat_weak_popov_iter(Qbar, NULL, Pbar, pivind, NULL, ROW_UPPER);
+            flint_free(pivind);
+        }
+        flint_free(rdeg0);
+    }
+
     /* Step 7: second recursive call, seeded at u = (N1)_{*,h} (the last
      * column of N1, i.e. D1*theta^h(a) -- Lemma 4.4), covering
      * theta_{h+1}(u),...,theta_{h+1}^{m-h}(u), which equals
@@ -199,7 +240,7 @@ void nmod_pseudo_Krylov_recursive(nmod_poly_mat_t D, nmod_poly_mat_t N,
     nmod_poly_mat_t D2, N2;
     nmod_poly_mat_init(D2, n, n, prime);
     nmod_poly_mat_init(N2, n, h2, prime);
-    nmod_pseudo_Krylov_recursive(D2, N2, Qt, Pt, Qbar, Pbar, t, v, h2);
+    _nmod_pseudo_Krylov_recursive_core(D2, N2, Qt, Pt, Qbar, Pbar, t, v, h2, renorm, deg_det_Q);
 
     /* Step 8: D = D2*D1, N = [D2*N1 | N2]; (Qt,Pt) already set by the
      * second recursive call above (Algorithm 6's own Q^(2),P^(2)). */
@@ -230,6 +271,69 @@ void nmod_pseudo_Krylov_recursive(nmod_poly_mat_t D, nmod_poly_mat_t N,
     nmod_poly_mat_clear(D2);
     nmod_poly_mat_clear(N2);
     nmod_poly_mat_clear(D2N1);
+}
+
+void nmod_pseudo_Krylov_recursive(nmod_poly_mat_t D, nmod_poly_mat_t N,
+                                   nmod_poly_mat_t Qt, nmod_poly_mat_t Pt,
+                                   const nmod_poly_mat_t Q, const nmod_poly_mat_t P,
+                                   const slong * s, const nmod_poly_mat_t a,
+                                   const slong m)
+{
+    _nmod_pseudo_Krylov_recursive_core(D, N, Qt, Pt, Q, P, s, a, m, 0, -1);
+}
+
+/** Same algorithm as nmod_pseudo_Krylov_recursive above (identical D, N as
+ *  a rational description: K = D^{-1}N is unchanged, since every extra
+ *  step here is a unimodular row transform of an already-irreducible
+ *  description -- see the shared core's own doc), except that the raw
+ *  per-node degree growth measured past m=r for algeqtodiffeq-shaped
+ *  inputs (claude-pseudoKrylov/CLAUDE.md, "Degree growth past m=r, and why
+ *  it's mostly cosmetic") is cleaned up along the way: whenever an
+ *  internal "advance" node's (Qbar,Pbar) is no longer minimal in the
+ *  absolute (zero-shift) sense, it is replaced in place by an equivalent
+ *  zero-shift-reduced pair before continuing the recursion.
+ *
+ *  Tested (bench-recursive-degrees-renorm.c, 2026-09-22): with this
+ *  conditional trigger, the per-node degree stays flat at deg(Q) for
+ *  every node, at every size tried, and an evaluation-based A/B check
+ *  against the non-renormalizing version never found a mismatch. An
+ *  UNCONDITIONAL version (renormalizing at every node regardless of the
+ *  trigger) was also tried and is NOT what this function does: it breaks
+ *  t-reducedness of the accumulated product and was observed to leave the
+ *  final D unreduced -- see the same session notes ("harmless" holds only
+ *  because the renormalization is CONDITIONAL).
+ *
+ *  CAVEAT, not yet closed: this conditional trigger has only been
+ *  observed empirically (never proven) to leave Qbar still t-reduced for
+ *  the shift t it is about to be fed into the next recursive call as --
+ *  checked exhaustively on algeqtodiffeq-shaped (Q,P) instances, and on
+ *  the same random (Q,P,a,m) generator used by
+ *  tests/t-pseudo-krylov-recursive.c's own "genuinely arbitrary Q,P"
+ *  checks (see tests/t-pseudo-krylov-recursive-renorm.c), but not proven
+ *  in general. Does NOT change deg(D) (D is a product of many always-
+ *  same-determinant-degree factors, so its degree is unaffected by how
+ *  minimal any one factor is on its own) -- this only cleans up
+ *  intermediate bookkeeping, it is not a complexity improvement.
+ *
+ *  One consequence worth knowing for a caller that chains further calls
+ *  via Qt, Pt: unlike nmod_pseudo_Krylov_recursive's own Qt, Pt (t-reduced
+ *  for the shift t = rdeg_s(D) of the node that produced them), here they
+ *  may instead be zero-shift-reduced, if the very last advance node
+ *  happened to trigger the renormalization.
+ */
+void nmod_pseudo_Krylov_recursive_renorm(nmod_poly_mat_t D, nmod_poly_mat_t N,
+                                          nmod_poly_mat_t Qt, nmod_poly_mat_t Pt,
+                                          const nmod_poly_mat_t Q, const nmod_poly_mat_t P,
+                                          const slong * s, const nmod_poly_mat_t a,
+                                          const slong m)
+{
+    nmod_poly_t detQ;
+    nmod_poly_init(detQ, nmod_poly_mat_modulus(Q));
+    nmod_poly_mat_det(detQ, Q);
+    slong deg_det_Q = nmod_poly_degree(detQ);
+    nmod_poly_clear(detQ);
+
+    _nmod_pseudo_Krylov_recursive_core(D, N, Qt, Pt, Q, P, s, a, m, 1, deg_det_Q);
 }
 
 
