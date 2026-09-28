@@ -96,16 +96,9 @@ static inline slong nmod_gfun_delta_T_degree_bound(slong r, slong d)
  *     (observed, not proved).
  *
  *  Same heuristic status as its sibling: a value that works in practice, not a
- *  derived bound. MAIN TODO (per the user) is to expose target_degree as a
- *  caller-supplied parameter rather than always deriving it internally --
- *  see claude-pseudoKrylov/todo.md.
- *
- *  LOAD-BEARING: nmod_pseudo_Krylov_series and
- *  nmod_algeqtodiffeq_series_left_description (algeqtodiffeq_series.c) must
- *  compute target_degree/sigma by the SAME formula -- that identity is exactly
- *  what guarantees K's own precision suffices for the description later built
- *  from it, with no precision bookkeeping needed between the two phases.
- *  Change one, change the other.
+ *  derived bound. For the algeqtodiffeq series route, target_degree, sigma and
+ *  the Krylov precision N are computed once, by
+ *  nmod_algeqtodiffeq_series_parameters, and passed to both phases.
  */
 #define NMOD_GFUN_DESCRIPTION_MARGIN 8
 
@@ -482,12 +475,6 @@ slong nmod_algeq_to_diffeq_recursive(nmod_poly_mat_t LT, const nmod_poly_mat_t P
  *  produce a wrong answer consistent with the truncation -- that risk,
  *  not present in the other families, is what makes this one unproven.
  *
- *  MAIN TODO (per the user, 2026-09-17): target_degree (hence the
- *  precision N/sigma derived from it) is currently computed internally
- *  from deg(phi1) alone, matching this module's existing heuristic-margin
- *  pattern -- exposing it as a caller-supplied parameter is flagged as a
- *  likely future need, not done here (claude-pseudoKrylov/todo.md).
- *
  *  Convention note: unlike every other pseudo-Krylov builder here (which
  *  return fraction-free NUMERATORS, column j carrying an implicit
  *  denominator phi1^j or Delta^j), this one returns the honest truncated
@@ -495,12 +482,21 @@ slong nmod_algeq_to_diffeq_recursive(nmod_poly_mat_t LT, const nmod_poly_mat_t P
  *  power series internally, which is why this route needs phi1(0) != 0
  *  (checked; flint_throw's otherwise, since x=0 is then a pole).
  *
- *  Returns N, the truncation order actually used (every entry is correct
- *  mod x^N).
+ *  N is the working precision, from nmod_algeqtodiffeq_series_parameters.
+ *  Returns prec = N - max(n-2,0): every entry is correct mod x^prec
+ *  (each differentiation step loses one term).
  */
 slong nmod_pseudo_Krylov_series(nmod_poly_mat_t K, const nmod_poly_t phi1,
                                  const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
-                                 const slong n);
+                                 const slong n, const slong N);
+
+/** target_degree, sigma and N for the series route, computed once and passed
+ *  to nmod_pseudo_Krylov_series (N) and
+ *  nmod_algeqtodiffeq_series_left_description (target_degree, sigma), so the
+ *  two phases cannot disagree. r = deg_y P, n = width of K. See
+ *  algeqtodiffeq_series.c for the formulas. */
+void nmod_algeqtodiffeq_series_parameters(slong * target_degree, slong * sigma, slong * N,
+                                          const nmod_poly_t phi1, const slong r, const slong n);
 
 /** Computes an irreducible left description (D,N) of the (truncated)
  *  pseudo-Krylov matrix K (D*K=N) directly via nmod_poly_mat_pmbasis --
@@ -510,12 +506,13 @@ slong nmod_pseudo_Krylov_series(nmod_poly_mat_t K, const nmod_poly_t phi1,
  *  PML's generic nmod_poly_mat_left_description (nmod_poly_mat_description.c)
  *  -- per the user, 2026-09-17: "I don't want to rely on
  *  nmod_poly_mat_left_description for the moment ... it is not stable at
- *  all (we will consider it later)". target_degree/sigma computed
- *  internally from phi1, matching nmod_pseudo_Krylov_series's own formula
- *  exactly. See algeqtodiffeq_series.c for the full doc.
+ *  all (we will consider it later)". target_degree and sigma from
+ *  nmod_algeqtodiffeq_series_parameters. See algeqtodiffeq_series.c for the
+ *  full doc.
  */
 void nmod_algeqtodiffeq_series_left_description(nmod_poly_mat_t N, nmod_poly_mat_t D,
-                                                 const nmod_poly_mat_t K, const nmod_poly_t phi1);
+                                                 const nmod_poly_mat_t K,
+                                                 const slong target_degree, const slong sigma);
 
 /** Cockle's algorithm (G2026.pdf Sec. 7) via the Series/Padé family's own
  *  LEFT-description route only, for now -- a nmod_algeq_to_diffeq_series_right

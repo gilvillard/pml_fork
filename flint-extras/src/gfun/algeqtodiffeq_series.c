@@ -71,24 +71,44 @@
     to coexist with this one, not replace it.
 */
 
+/** Parameters of the series route, computed ONCE by the caller and passed to
+ *  both phases, so the Krylov precision and the description cannot disagree:
+ *   - target_degree: rows of the left description of K are accepted up to
+ *     this degree (nmod_algeqtodiffeq_series_left_description);
+ *   - sigma: order of that description's approximant basis,
+ *     ceil((r+n)*target_degree/min(r,n)) + 1 (nmod_poly_mat_left_description's
+ *     documented requirement);
+ *   - N: power-series precision for nmod_pseudo_Krylov_series, sigma + (n-1),
+ *     since each of its n-1 steps differentiates, losing one term.
+ *
+ *  target_degree = deg(phi1) + NMOD_GFUN_DESCRIPTION_MARGIN: a margin on the
+ *  description degree of the PSEUDO-KRYLOV CONSTRUCTION AS A WHOLE -- K, built
+ *  through n applications of theta with truncation and an inverse series along
+ *  the way. That is why it is deliberately NOT NMOD_GFUN_NONPROPER_MARGIN
+ *  (split 2026-09-18, per the user), which covers something different in kind:
+ *  T itself failing to be exactly proper. See both docs in gfun.h. Calibrated
+ *  for n = r+1; like every target_degree/margin in this module, a heuristic
+ *  guess, not a derived bound.
+ */
+void nmod_algeqtodiffeq_series_parameters(slong * target_degree, slong * sigma, slong * N,
+                                          const nmod_poly_t phi1, const slong r, const slong n)
+{
+    *target_degree = nmod_poly_degree(phi1) + NMOD_GFUN_DESCRIPTION_MARGIN;
+    slong minrn = FLINT_MIN(r, n);
+    *sigma = ((r + n) * (*target_degree) + minrn - 1) / minrn + 1; /* ceil((r+n)*target_degree/min(r,n)) + 1 */
+    *N = *sigma + (n - 1);
+}
+
+
 /** Builds the r x n pseudo-Krylov matrix K, column k (0-indexed)
  *  representing theta^k(a) for a = y (the monomial basis vector
- *  (0,1,0,...,0)^t), each entry truncated to a fixed power-series
- *  precision N (not exact, unlike nmod_pseudo_Krylov_naive) -- see the
- *  file header comment above for why this is genuinely heuristic.
+ *  (0,1,0,...,0)^t), each entry truncated to the power-series precision N
+ *  from nmod_algeqtodiffeq_series_parameters (not exact, unlike
+ *  nmod_pseudo_Krylov_naive) -- see the file header comment above for why
+ *  this is genuinely heuristic.
  *
- *  Precision bookkeeping (per the user, 2026-09-17): two different kinds
- *  of bound are in play here, not one.
- *   - N is a target NUMBER OF TERMS (power-series truncation order): large
- *     enough that nmod_algeqtodiffeq_series_left_description's own
- *     approximant-basis reconstruction (below) has enough precision in K
- *     to recover a degree-<=target_degree description
- *     (nmod_poly_mat_left_description's own documented requirement,
- *     "at least (m+n)*delta/min(n,m)+1" -- sigma below matches that
- *     formula exactly, computed the same way here as it will be
- *     recomputed internally there), PLUS n-1 extra terms since each of
- *     the n-1 loop steps below differentiates the previous column,
- *     consuming one term of "clean" precision per step.
+ *  Two different kinds of bound are in play here, not one: N is a NUMBER OF
+ *  TERMS (power-series truncation order, supplied by the caller), and
  *   - D is a NUMBER OF POINTS for nmod_apply_T's own geometric
  *     evaluation-interpolation machinery (an unrelated kind of bound --
  *     see that function's own doc) needed to compute phi1*T(.) correctly.
@@ -96,29 +116,6 @@
  *     degree, NOT once up front from the worst case -- see the loop for
  *     why. Carries NMOD_GFUN_NONPROPER_MARGIN (replacing the draft's bare
  *     "+200"), which is the margin appropriate to an evaluation bound.
- *
- *  target_degree = deg(phi1) + NMOD_GFUN_DESCRIPTION_MARGIN: a margin on the
- *  description degree of the PSEUDO-KRYLOV CONSTRUCTION AS A WHOLE -- K, built
- *  through n applications of theta with truncation and an inverse series along
- *  the way. That is why it is deliberately NOT NMOD_GFUN_NONPROPER_MARGIN
- *  (split 2026-09-18, per the user), which covers something different in kind:
- *  T itself failing to be exactly proper. Note that makes NONPROPER the right
- *  constant for nmod_algeqtodiffeq_T_left_description's own target degree,
- *  even though that is also a degree -- it describes T. See both docs in
- *  gfun.h.
- *  Unlike nmod_algeqtodiffeq_T_left_description's own target_degree (which
- *  divides by (r-1), a structural fact about T's own r x r matrix having
- *  a zero first column), this bounds the degree for the description of
- *  the FULL K directly, so no such division applies -- a flat additive
- *  margin on deg(phi1) is the natural analogue instead. Like every other
- *  target_degree/margin in this module, this is a heuristic guess, not a
- *  derived bound -- MAIN TODO (per the user): expose target_degree as a
- *  caller-supplied parameter later, rather than only ever deriving it
- *  internally (claude-pseudoKrylov/todo.md).
- *
- *  NOTE: nmod_algeqtodiffeq_series_left_description below must keep computing
- *  target_degree/sigma by the SAME formula -- that identity is what makes K's
- *  precision automatically sufficient there. Change one, change the other.
  *
  *  CT must already be phi1-scaled (nmod_algeqtodiffeq_rescale_by_phi1),
  *  matching nmod_pseudo_Krylov_naive's own convention exactly -- this
@@ -139,14 +136,14 @@
  *  report its own precision would be a trap, and one that reports a number
  *  its later columns don't actually meet would be worse.
  *
- *  prec is always >= sigma+1, so it is always enough for
- *  nmod_algeqtodiffeq_series_left_description's own order-sigma
- *  approximant basis below -- that is precisely what the "+ (n-1)" in N
- *  buys.
+ *  With N from nmod_algeqtodiffeq_series_parameters, prec >= sigma+1, so it
+ *  is always enough for nmod_algeqtodiffeq_series_left_description's own
+ *  order-sigma approximant basis below -- that is precisely what the
+ *  "+ (n-1)" in N buys.
  */
 slong nmod_pseudo_Krylov_series(nmod_poly_mat_t K, const nmod_poly_t phi1,
                                  const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
-                                 const slong n)
+                                 const slong n, const slong N)
 {
     if (n < 1)
         flint_throw(FLINT_DOMERR, "nmod_pseudo_Krylov_series: n must be >= 1 "
@@ -167,11 +164,6 @@ slong nmod_pseudo_Krylov_series(nmod_poly_mat_t K, const nmod_poly_t phi1,
         flint_throw(FLINT_ERROR, "nmod_pseudo_Krylov_series: phi1(0) == 0, so "
                     "x=0 is a pole and the truncated-series expansion around "
                     "it does not exist (needs a shifted expansion point)\n");
-
-    slong target_degree = deg_phi1 + NMOD_GFUN_DESCRIPTION_MARGIN;
-    slong minrn = FLINT_MIN(r, n);
-    slong sigma = ((r + n) * target_degree + minrn - 1) / minrn + 1; /* ceil((r+n)*target_degree/min(r,n)) + 1 */
-    slong N = sigma + (n - 1);
 
     nmod_poly_t phi1k, iphi1, iphi1k;
     nmod_poly_init(phi1k, prime);
@@ -286,12 +278,9 @@ slong nmod_pseudo_Krylov_series(nmod_poly_mat_t K, const nmod_poly_t phi1,
  *  want to rely on nmod_poly_mat_left_description for the moment ... it
  *  is not stable at all (we will consider it later)".
  *
- *  target_degree/sigma computed internally from phi1 (same MAIN TODO as
- *  nmod_pseudo_Krylov_series above: exposing target_degree as a
- *  caller-supplied parameter is flagged for later, not done here) --
- *  matches nmod_pseudo_Krylov_series's own formula exactly, so K's own
- *  precision (computed there from the same phi1/r/n) is always enough:
- *  no separate precision bookkeeping needed between phase (a) and (b).
+ *  target_degree and sigma come from nmod_algeqtodiffeq_series_parameters,
+ *  the same call that gave K its precision N, so K is always precise enough
+ *  for the order-sigma approximant basis below.
  *
  *  Derivation (unlike T's own B=[-Tmat;phi1*I_r], no extra phi1 scaling
  *  is needed here, since K itself -- not phi1*K -- is the quantity being
@@ -307,23 +296,12 @@ slong nmod_pseudo_Krylov_series(nmod_poly_mat_t K, const nmod_poly_t phi1,
  *  construction failures (e.g. nmod_algeqtodiffeq_T_left_description).
  */
 void nmod_algeqtodiffeq_series_left_description(nmod_poly_mat_t N, nmod_poly_mat_t D,
-                                                 const nmod_poly_mat_t K, const nmod_poly_t phi1)
+                                                 const nmod_poly_mat_t K,
+                                                 const slong target_degree, const slong sigma)
 {
     ulong prime = nmod_poly_mat_modulus(K);
     slong r = K->r;
     slong n = K->c;
-
-    slong deg_phi1 = nmod_poly_degree(phi1);
-    /* NMOD_GFUN_DESCRIPTION_MARGIN: what is being described here is K, the
-     * pseudo-Krylov construction as a whole, not T's properness -- see gfun.h
-     * for why those are different margins despite both bounding a degree
-     * (split 2026-09-18, per the user). This formula must stay IDENTICAL to
-     * nmod_pseudo_Krylov_series's above: that identity is what guarantees K
-     * arrives with enough precision for this reconstruction, so no precision
-     * bookkeeping is needed between the two phases. */
-    slong target_degree = deg_phi1 + NMOD_GFUN_DESCRIPTION_MARGIN;
-    slong minrn = FLINT_MIN(r, n);
-    slong sigma = ((r + n) * target_degree + minrn - 1) / minrn + 1; /* ceil((r+n)*target_degree/min(r,n)) + 1 */
 
     nmod_poly_mat_t B;
     nmod_poly_mat_init(B, r + n, n, prime);
@@ -412,14 +390,17 @@ slong nmod_algeq_to_diffeq_series_left(nmod_poly_mat_t LT, const nmod_poly_mat_t
     nmod_algeqtodiffeq_rescale_by_phi1(phi1, CT, PT, Delta, state);
     flint_rand_clear(state);
 
+    slong target_degree, sigma, N;
+    nmod_algeqtodiffeq_series_parameters(&target_degree, &sigma, &N, phi1, r, n);
+
     nmod_poly_mat_t K;
     nmod_poly_mat_init(K, r, n, prime);
-    nmod_pseudo_Krylov_series(K, phi1, CT, PT, n);
+    nmod_pseudo_Krylov_series(K, phi1, CT, PT, n, N);
 
     nmod_poly_mat_t NN, DD;
     nmod_poly_mat_init(NN, r, n, prime);
     nmod_poly_mat_init(DD, r, r, prime);
-    nmod_algeqtodiffeq_series_left_description(NN, DD, K, phi1);
+    nmod_algeqtodiffeq_series_left_description(NN, DD, K, target_degree, sigma);
 
     /* Explicit zero shift, not NULL (which means NN's column degrees): for
      * nz > 1 this returns the zero-shift minimal basis of the solutions,
