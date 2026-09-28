@@ -75,28 +75,31 @@
  *  both phases, so the Krylov precision and the description cannot disagree:
  *   - target_degree: rows of the left description of K are accepted up to
  *     this degree (nmod_algeqtodiffeq_series_left_description);
- *   - sigma: order of that description's approximant basis,
- *     ceil((r+n)*target_degree/min(r,n)) + 1 (nmod_poly_mat_left_description's
- *     documented requirement);
+ *   - sigma: order of that description's approximant basis;
  *   - N: power-series precision for nmod_pseudo_Krylov_series, sigma + (n-1),
  *     since each of its n-1 steps differentiates, losing one term.
  *
  *  target_degree = ceil(max(m,r)*deg(phi1)/r) + NMOD_GFUN_DESCRIPTION_MARGIN,
  *  m = n-1: the McMillan degree of K, about m*deg(phi1), spread evenly over r
  *  rows -- a generic guess, not a derived bound. For m <= r it is
- *  deg(phi1) + margin, as before: shrinking it there makes sigma too small for
- *  the right description of K (spurious rows pass, measured at d = 6). Past r
- *  it undershoots the heavy rows d(2m-1) by about d(m/r-1), so the
+ *  deg(phi1) + margin, as before (m <= r is not the experimental target).
+ *  Past r it undershoots the heavy rows d(2m-1) by about d(m/r-1), so the
  *  description throws once that exceeds the margin.
  *  NMOD_GFUN_DESCRIPTION_MARGIN, not NMOD_GFUN_NONPROPER_MARGIN: see gfun.h.
+ *
+ *  sigma = target_degree + deg(phi1) + 1 + NMOD_GFUN_NONPROPER_MARGIN: a kept
+ *  row is exact once sigma > target_degree + (max column degree of a right
+ *  description of K), measured to be deg(phi1) for generic P. The margin
+ *  covers that degree exceeding deg(phi1), a properness question; if it does
+ *  by more, spurious rows pass and the description throws.
  */
 void nmod_algeqtodiffeq_series_parameters(slong * target_degree, slong * sigma, slong * N,
                                           const nmod_poly_t phi1, const slong r, const slong n)
 {
+    slong deg_phi1 = nmod_poly_degree(phi1);
     slong mr = FLINT_MAX(n - 1, r);
-    *target_degree = (mr * nmod_poly_degree(phi1) + r - 1) / r + NMOD_GFUN_DESCRIPTION_MARGIN;
-    slong minrn = FLINT_MIN(r, n);
-    *sigma = ((r + n) * (*target_degree) + minrn - 1) / minrn + 1; /* ceil((r+n)*target_degree/min(r,n)) + 1 */
+    *target_degree = (mr * deg_phi1 + r - 1) / r + NMOD_GFUN_DESCRIPTION_MARGIN;
+    *sigma = *target_degree + deg_phi1 + 1 + NMOD_GFUN_NONPROPER_MARGIN;
     *N = *sigma + (n - 1);
 }
 
