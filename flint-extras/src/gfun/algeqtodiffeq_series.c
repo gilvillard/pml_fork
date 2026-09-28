@@ -421,9 +421,14 @@ slong nmod_algeq_to_diffeq_series_left(nmod_poly_mat_t LT, const nmod_poly_mat_t
     nmod_poly_mat_init(DD, r, r, prime);
     nmod_algeqtodiffeq_series_left_description(NN, DD, K, phi1);
 
+    /* Explicit zero shift, not NULL (which means NN's column degrees): for
+     * nz > 1 this returns the zero-shift minimal basis of the solutions,
+     * the same one as the other drivers. shift is in/out, length ncols(NN). */
     slong * pivind = flint_malloc(n * sizeof(slong));
-    slong nz = nmod_poly_mat_kernel(LT, pivind, NULL, NN, ORD_WEAK_POPOV, COL_UPPER);
+    slong * shift = flint_calloc(n, sizeof(slong));
+    slong nz = nmod_poly_mat_kernel(LT, pivind, shift, NN, ORD_WEAK_POPOV, COL_UPPER);
     flint_free(pivind);
+    flint_free(shift);
 
     nmod_poly_mat_clear(K);
     nmod_poly_mat_clear(NN);

@@ -200,20 +200,14 @@ slong nmod_algeq_to_diffeq_naive(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, c
             nmod_poly_mul(nmod_poly_mat_entry(K, i, j), nmod_poly_mat_entry(K, i, j), tpol);
     }
 
-    /* NOTE: the *_phi1 original this was renamed from computed a `pivind`
-     * via nmod_poly_mat_column_degree(pivind, K, shift) here, with a
-     * zero-initialized `shift`, before the kernel call below -- but
-     * nmod_poly_mat_kernel's own `pivind` is documented output-only (it
-     * doesn't read the value passed in), so that precomputation's result
-     * was always just overwritten, and `shift` itself was never used
-     * (NULL is passed for shift to the kernel call, not that computed
-     * array) -- both dropped here as dead code. Preserved as found: NULL
-     * for shift (uniform shift), not the discarded computed one -- worth
-     * asking whether that was deliberate or itself a leftover, not
-     * decided here. */
+    /* Explicit zero shift, not NULL (which means K's column degrees): for
+     * nz > 1 this returns the zero-shift minimal basis of the solutions,
+     * the same one as the other drivers. shift is in/out, length ncols(K). */
     slong * pivind = flint_malloc(n * sizeof(slong));
-    slong nz = nmod_poly_mat_kernel(LT, pivind, NULL, K, ORD_WEAK_POPOV, COL_UPPER);
+    slong * shift = flint_calloc(n, sizeof(slong));
+    slong nz = nmod_poly_mat_kernel(LT, pivind, shift, K, ORD_WEAK_POPOV, COL_UPPER);
     flint_free(pivind);
+    flint_free(shift);
 
     nmod_poly_mat_clear(K);
     nmod_poly_mat_clear(iPyT);

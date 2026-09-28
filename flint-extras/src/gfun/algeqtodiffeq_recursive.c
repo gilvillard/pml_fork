@@ -313,9 +313,14 @@ slong nmod_algeq_to_diffeq_recursive(nmod_poly_mat_t LT, const nmod_poly_mat_t P
             nmod_poly_set(nmod_poly_mat_entry(K, i, j + 1), nmod_poly_mat_entry(N, i, j));
     }
 
+    /* Explicit zero shift, not NULL (which means K's column degrees): for
+     * nz > 1 this returns the zero-shift minimal basis of the solutions,
+     * the same one as the other drivers. shift is in/out, length ncols(K). */
     slong * pivind = flint_malloc(n * sizeof(slong));
-    slong nz = nmod_poly_mat_kernel(LT, pivind, NULL, K, ORD_WEAK_POPOV, COL_UPPER);
+    slong * shift = flint_calloc(n, sizeof(slong));
+    slong nz = nmod_poly_mat_kernel(LT, pivind, shift, K, ORD_WEAK_POPOV, COL_UPPER);
     flint_free(pivind);
+    flint_free(shift);
 
     flint_rand_clear(state);
     nmod_poly_mat_clear(a);
