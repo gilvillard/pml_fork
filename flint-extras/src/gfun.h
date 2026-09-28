@@ -492,8 +492,9 @@ slong nmod_pseudo_Krylov_series(nmod_poly_mat_t K, const nmod_poly_t phi1,
 /** target_degree, sigma and N for the series route, computed once and passed
  *  to nmod_pseudo_Krylov_series (N) and
  *  nmod_algeqtodiffeq_series_left_description (target_degree, sigma), so the
- *  two phases cannot disagree. r = deg_y P, n = width of K; target_degree =
- *  ceil(max(n-1,r)*deg(phi1)/r) + NMOD_GFUN_DESCRIPTION_MARGIN, sigma =
+ *  two phases cannot disagree. r = deg_y P, n = width of K, m = n-1;
+ *  target_degree = deg(phi1) + NMOD_GFUN_DESCRIPTION_MARGIN for m <= r,
+ *  ceil(m*deg(phi1)/(r-1)) + NMOD_GFUN_DESCRIPTION_MARGIN for m > r, sigma =
  *  target_degree + deg(phi1) + 1 + NMOD_GFUN_NONPROPER_MARGIN, N = sigma + n-1.
  *  See algeqtodiffeq_series.c for why. */
 void nmod_algeqtodiffeq_series_parameters(slong * target_degree, slong * sigma, slong * N,

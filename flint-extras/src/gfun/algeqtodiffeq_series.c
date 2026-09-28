@@ -79,12 +79,13 @@
  *   - N: power-series precision for nmod_pseudo_Krylov_series, sigma + (n-1),
  *     since each of its n-1 steps differentiates, losing one term.
  *
- *  target_degree = ceil(max(m,r)*deg(phi1)/r) + NMOD_GFUN_DESCRIPTION_MARGIN,
- *  m = n-1: the McMillan degree of K, about m*deg(phi1), spread evenly over r
- *  rows -- a generic guess, not a derived bound. For m <= r it is
- *  deg(phi1) + margin, as before (m <= r is not the experimental target).
- *  Past r it undershoots the heavy rows d(2m-1) by about d(m/r-1), so the
- *  description throws once that exceeds the margin.
+ *  target_degree, m = n-1: deg(phi1) + NMOD_GFUN_DESCRIPTION_MARGIN for
+ *  m <= r (m <= r is not the experimental target); for m > r,
+ *  ceil(m*deg(phi1)/(r-1)) + NMOD_GFUN_DESCRIPTION_MARGIN -- the McMillan
+ *  degree of K, about m*deg(phi1), carried by r-1 rows, since for generic P
+ *  one row (on the trace covector) is light, degree d(m+1), and the others are
+ *  d(2m-1). Dividing by r instead undershoots those by d(m/r-1). A generic
+ *  guess, not a derived bound; it jumps at m = r+1.
  *  NMOD_GFUN_DESCRIPTION_MARGIN, not NMOD_GFUN_NONPROPER_MARGIN: see gfun.h.
  *
  *  sigma = target_degree + deg(phi1) + 1 + NMOD_GFUN_NONPROPER_MARGIN: a kept
@@ -97,8 +98,12 @@ void nmod_algeqtodiffeq_series_parameters(slong * target_degree, slong * sigma, 
                                           const nmod_poly_t phi1, const slong r, const slong n)
 {
     slong deg_phi1 = nmod_poly_degree(phi1);
-    slong mr = FLINT_MAX(n - 1, r);
-    *target_degree = (mr * deg_phi1 + r - 1) / r + NMOD_GFUN_DESCRIPTION_MARGIN;
+    slong m = n - 1;
+    slong rows = FLINT_MAX(r - 1, 1);
+    if (m <= r)
+        *target_degree = deg_phi1 + NMOD_GFUN_DESCRIPTION_MARGIN;
+    else
+        *target_degree = (m * deg_phi1 + rows - 1) / rows + NMOD_GFUN_DESCRIPTION_MARGIN;
     *sigma = *target_degree + deg_phi1 + 1 + NMOD_GFUN_NONPROPER_MARGIN;
     *N = *sigma + (n - 1);
 }
