@@ -509,8 +509,10 @@ void nmod_algeqtodiffeq_series_parameters(slong * target_degree, slong * sigma, 
  *  -- per the user, 2026-09-17: "I don't want to rely on
  *  nmod_poly_mat_left_description for the moment ... it is not stable at
  *  all (we will consider it later)". target_degree and sigma from
- *  nmod_algeqtodiffeq_series_parameters. See algeqtodiffeq_series.c for the
- *  full doc.
+ *  nmod_algeqtodiffeq_series_parameters. Requires K[:,0] = e_1 (the seed
+ *  a = y, as nmod_pseudo_Krylov_series builds it; checked): that column is
+ *  left out of the approximant basis and N[:,0] = D[:,1] is filled in
+ *  exactly. See algeqtodiffeq_series.c for the full doc.
  */
 void nmod_algeqtodiffeq_series_left_description(nmod_poly_mat_t N, nmod_poly_mat_t D,
                                                  const nmod_poly_mat_t K,

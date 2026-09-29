@@ -299,11 +299,23 @@ slong nmod_pseudo_Krylov_series(nmod_poly_mat_t K, const nmod_poly_t phi1,
  *  exactly D*K=N, row by row, with plain +1's on the identity block
  *  (not phi1, since there is no separate scaling factor to cancel here).
  *
+ *  Column 0 is left out of the approximant problem (trim, 2026-09-29):
+ *  K[:,0] is the seed a = y, the exact constant vector e_1, so its condition
+ *  N_row[0] = D_row*e_1 = D_row[1] holds for every D_row and says nothing
+ *  about D. The module of [-K;I_n] is exactly the module of the trimmed
+ *  [-K[:,1:];I_{n-1}] (each row extended by N_row[0] = D_row[1], which does
+ *  not raise its degree) plus one extra generator x^sigma at N_row[0]. So
+ *  the kept rows are the same, and N[:,0] = D[:,1] is filled in afterwards,
+ *  exactly. Keeping column 0 costs that degree-sigma row, which unbalances
+ *  the basis: measured 0.69x pmbasis time at r=m=20, d=8
+ *  (claude-pseudoKrylov/CLAUDE.md). Hence K[:,0] == e_1 is required, and
+ *  checked: nmod_pseudo_Krylov_series always builds it that way.
+ *
  *  N, D must already be nmod_poly_mat_init'd by the caller (N r x n,
- *  D r x r). flint_throw's if fewer than r rows pass the target_degree
- *  filter (no complete description) or more than r (ambiguous: sigma too
- *  small), matching this module's existing convention for construction
- *  failures (e.g. nmod_algeqtodiffeq_T_left_description).
+ *  D r x r). flint_throw's if K[:,0] != e_1, if fewer than r rows pass the
+ *  target_degree filter (no complete description) or more than r
+ *  (ambiguous: sigma too small), matching this module's existing convention
+ *  for construction failures (e.g. nmod_algeqtodiffeq_T_left_description).
  */
 void nmod_algeqtodiffeq_series_left_description(nmod_poly_mat_t N, nmod_poly_mat_t D,
                                                  const nmod_poly_mat_t K,
@@ -313,32 +325,53 @@ void nmod_algeqtodiffeq_series_left_description(nmod_poly_mat_t N, nmod_poly_mat
     slong r = K->r;
     slong n = K->c;
 
-    nmod_poly_mat_t B;
-    nmod_poly_mat_init(B, r + n, n, prime);
+    /* The trim relies on K[:,0] = e_1 exactly (see above). */
     for (slong i = 0; i < r; i++)
     {
-        for (slong j = 0; j < n; j++)
+        const nmod_poly_struct * k0 = nmod_poly_mat_entry(K, i, 0);
+        if (i == 1 ? !nmod_poly_is_one(k0) : !nmod_poly_is_zero(k0))
+            flint_throw(FLINT_ERROR, "nmod_algeqtodiffeq_series_left_description: "
+                        "K[:,0] must be e_1 (the seed a = y)\n");
+    }
+
+    /* n = 1: K = e_1 is already polynomial, D = I, N = e_1. */
+    if (n == 1)
+    {
+        nmod_poly_mat_one(D);
+        for (slong i = 0; i < r; i++)
+            nmod_poly_set(nmod_poly_mat_entry(N, i, 0), nmod_poly_mat_entry(K, i, 0));
+        return;
+    }
+
+    /* B = [-K[:,1:] ; I_{n-1}], (r+n-1) x (n-1). */
+    slong c = n - 1;
+    nmod_poly_mat_t B;
+    nmod_poly_mat_init(B, r + c, c, prime);
+    for (slong i = 0; i < r; i++)
+    {
+        for (slong j = 0; j < c; j++)
         {
-            nmod_poly_neg(nmod_poly_mat_entry(B, i, j), nmod_poly_mat_entry(K, i, j));
+            nmod_poly_neg(nmod_poly_mat_entry(B, i, j), nmod_poly_mat_entry(K, i, j + 1));
             nmod_poly_truncate(nmod_poly_mat_entry(B, i, j), sigma);
         }
     }
-    for (slong i = 0; i < n; i++)
+    for (slong i = 0; i < c; i++)
         nmod_poly_one(nmod_poly_mat_entry(B, i + r, i));
 
-    slong * shift = flint_malloc((r + n) * sizeof(slong));
-    for (slong i = 0; i < r + n; i++)
+    slong * shift = flint_malloc((r + c) * sizeof(slong));
+    for (slong i = 0; i < r + c; i++)
         shift[i] = 0;
 
     nmod_poly_mat_t ker;
-    nmod_poly_mat_init(ker, r + n, r + n, prime);
+    nmod_poly_mat_init(ker, r + c, r + c, prime);
     nmod_poly_mat_pmbasis(ker, shift, B, sigma);
 
     /* More than r rows passing means sigma is too small for target_degree:
      * some are truncation artefacts, and keeping "the first r" would return
-     * a wrong description silently. */
+     * a wrong description silently. A row's degree is the same with or
+     * without column 0 (N_row[0] = D_row[1]), so the filter is unchanged. */
     slong nbrows = 0;
-    for (slong i = 0; i < r + n; i++)
+    for (slong i = 0; i < r + c; i++)
     {
         if (shift[i] <= target_degree)
         {
@@ -346,8 +379,10 @@ void nmod_algeqtodiffeq_series_left_description(nmod_poly_mat_t N, nmod_poly_mat
             {
                 for (slong j = 0; j < r; j++)
                     nmod_poly_set(nmod_poly_mat_entry(D, nbrows, j), nmod_poly_mat_entry(ker, i, j));
-                for (slong j = 0; j < n; j++)
-                    nmod_poly_set(nmod_poly_mat_entry(N, nbrows, j), nmod_poly_mat_entry(ker, i, j + r));
+                /* N[:,0] = D*K[:,0] = D*e_1 = D[:,1], exact */
+                nmod_poly_set(nmod_poly_mat_entry(N, nbrows, 0), nmod_poly_mat_entry(ker, i, 1));
+                for (slong j = 0; j < c; j++)
+                    nmod_poly_set(nmod_poly_mat_entry(N, nbrows, j + 1), nmod_poly_mat_entry(ker, i, j + r));
             }
             nbrows++;
         }
