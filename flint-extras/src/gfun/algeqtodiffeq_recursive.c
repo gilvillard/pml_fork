@@ -335,3 +335,221 @@ slong nmod_algeq_to_diffeq_recursive(nmod_poly_mat_t LT, const nmod_poly_mat_t P
 
     return nz;
 }
+
+
+/** Irreducible left description T_b = Q^{-1}P of the quotient of
+ *  algeqtodiffeq's module by k(x).1: T_b is T without its first row and
+ *  column (T's first column is zero since theta(1) = 0). Q, P must be
+ *  initialized (r-1) x (r-1), r = (PT->r)-1 >= 2; phi1, CT, PT, Delta as in
+ *  nmod_algeqtodiffeq_T_left_description, whose construction this follows
+ *  (pmbasis of [-phi1*T_b; phi1*I] at order sigma, rows of shift <= target),
+ *  with phi1's degree spread over the r-1 rows of T_b. Throws unless exactly
+ *  r-1 rows pass the filter: more would make the choice ambiguous.
+ */
+void nmod_algeqtodiffeq_Tb_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P,
+                                           const nmod_poly_t phi1,
+                                           const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
+                                           const nmod_poly_t Delta)
+{
+    ulong prime = nmod_poly_mat_modulus(PT);
+    slong r = (PT->r) - 1;
+    slong k = r - 1;
+
+    if (k < 1)
+        flint_throw(FLINT_DOMERR, "nmod_algeqtodiffeq_Tb_left_description: needs r >= 2\n");
+
+    nmod_poly_mat_t CT_phi1;
+    nmod_poly_mat_init(CT_phi1, r, 1, prime);
+    for (slong i = 0; i < r; i++)
+        nmod_poly_set(nmod_poly_mat_entry(CT_phi1, i, 0), nmod_poly_mat_entry(CT, i, 0));
+    nmod_algeqtodiffeq_rescale_CT_by_phi1(CT_phi1, PT, Delta, phi1);
+
+    slong d = nmod_poly_mat_degree(PT);
+    slong Dbound = nmod_gfun_delta_T_degree_bound(r, d) + nmod_poly_degree(phi1);
+
+    /* Tb = (phi1*T)[1:,1:], column j from phi1*T(y^j) */
+    nmod_poly_mat_t Tb, Yk, col;
+    nmod_poly_mat_init(Tb, k, k, prime);
+    nmod_poly_mat_init(Yk, r, 1, prime);
+    nmod_poly_mat_init(col, r, 1, prime);
+    for (slong j = 1; j < r; j++)
+    {
+        nmod_poly_mat_zero(Yk);
+        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(Yk, j, 0), 0, 1);
+        nmod_apply_T(col, Yk, CT_phi1, PT, Dbound);
+        for (slong i = 1; i < r; i++)
+            nmod_poly_set(nmod_poly_mat_entry(Tb, i - 1, j - 1), nmod_poly_mat_entry(col, i, 0));
+    }
+
+    slong deg_phi1 = nmod_poly_degree(phi1);
+    slong target_degree = (deg_phi1 + NMOD_GFUN_NONPROPER_MARGIN + k - 1) / k; /* ceil */
+    slong sigma = 2 * target_degree + 1;
+
+    nmod_poly_mat_t B;
+    nmod_poly_mat_init(B, 2 * k, k, prime);
+    for (slong i = 0; i < k; i++)
+    {
+        for (slong j = 0; j < k; j++)
+        {
+            nmod_poly_neg(nmod_poly_mat_entry(B, i, j), nmod_poly_mat_entry(Tb, i, j));
+            nmod_poly_truncate(nmod_poly_mat_entry(B, i, j), sigma);
+        }
+        nmod_poly_set_trunc(nmod_poly_mat_entry(B, i + k, i), phi1, sigma);
+    }
+
+    slong * shift = flint_calloc(2 * k, sizeof(slong));
+    nmod_poly_mat_t ker;
+    nmod_poly_mat_init(ker, 2 * k, 2 * k, prime);
+    nmod_poly_mat_pmbasis(ker, shift, B, sigma);
+
+    slong nbrows = 0;
+    for (slong i = 0; i < 2 * k; i++)
+    {
+        if (shift[i] <= target_degree)
+        {
+            if (nbrows == k)
+                flint_throw(FLINT_ERROR, "nmod_algeqtodiffeq_Tb_left_description: more than "
+                            "r-1 rows of degree at most %wd (sigma too small?)\n", target_degree);
+            for (slong j = 0; j < k; j++)
+            {
+                nmod_poly_set(nmod_poly_mat_entry(Q, nbrows, j), nmod_poly_mat_entry(ker, i, j));
+                nmod_poly_set(nmod_poly_mat_entry(P, nbrows, j), nmod_poly_mat_entry(ker, i, j + k));
+            }
+            nbrows++;
+        }
+    }
+    if (nbrows < k)
+        flint_throw(FLINT_ERROR, "nmod_algeqtodiffeq_Tb_left_description: no complete "
+                    "description of degree at most %wd found (target_degree too small?)\n",
+                    target_degree);
+
+    flint_free(shift);
+    nmod_poly_mat_clear(CT_phi1);
+    nmod_poly_mat_clear(Tb);
+    nmod_poly_mat_clear(Yk);
+    nmod_poly_mat_clear(col);
+    nmod_poly_mat_clear(B);
+    nmod_poly_mat_clear(ker);
+}
+
+
+/** Cockle's algorithm via the recursive algorithm on the quotient by the
+ *  trace (pk_main.tex Sec. 6, "Modified recursive algorithm"). With
+ *  K = [a, theta(a), ..., theta^m(a)], a = y, m = n-1: deleting the first
+ *  row of K gives the pseudo-Krylov matrix K_b of theta_b = d/dx + T_b with
+ *  seed a_b = e_0, and tau = (Tr y^i)_i has tau[0] = r, so K eta = 0 iff
+ *  K_b eta = 0 and tau K eta = 0. Hence the kernel of
+ *  [D_b a_b | N_b ; p_r^{m+1} tau K], with [theta_b(a_b) ...] = D_b^{-1}N_b
+ *  from nmod_pseudo_Krylov_recursive in dimension r-1, and
+ *  tau K = ((Tr y)^{(j)})_j, Tr y = -p_{r-1}/p_r. Same output convention as
+ *  nmod_algeq_to_diffeq_recursive. Requires n >= 2, r >= 2, r != 0 in k.
+ */
+slong nmod_algeq_to_diffeq_recursive_trace(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n)
+{
+    ulong prime = nmod_poly_mat_modulus(PT);
+    slong r = (PT->r) - 1;
+    slong m = n - 1;
+    slong k = r - 1;
+
+    if (n < 2)
+        flint_throw(FLINT_DOMERR, "nmod_algeq_to_diffeq_recursive_trace: n must be >= 2\n");
+    if (r < 2 || (ulong) r % prime == 0)
+        flint_throw(FLINT_DOMERR, "nmod_algeq_to_diffeq_recursive_trace: needs r >= 2 "
+                    "and r invertible mod p\n");
+
+    nmod_poly_t Delta;
+    nmod_poly_mat_t iPyT, CT;
+    nmod_algeqtodiffeq_setup(Delta, iPyT, CT, PT);
+
+    /* same per-call seeding as nmod_algeq_to_diffeq_recursive */
+    flint_rand_t state;
+    flint_rand_init(state);
+    srand((unsigned int) clock());
+    flint_rand_set_seed(state, rand(), rand());
+
+    nmod_poly_t phi1;
+    nmod_poly_init(phi1, prime);
+    nmod_phi1(phi1, CT, PT, Delta, state);
+
+    nmod_poly_mat_t Q, P;
+    nmod_poly_mat_init(Q, k, k, prime);
+    nmod_poly_mat_init(P, k, k, prime);
+    nmod_algeqtodiffeq_Tb_left_description(Q, P, phi1, CT, PT, Delta);
+
+    nmod_poly_mat_t a, D, N, Qt, Pt;
+    nmod_poly_mat_init(a, k, 1, prime);
+    nmod_poly_set_coeff_ui(nmod_poly_mat_entry(a, 0, 0), 0, 1);
+    nmod_poly_mat_init(D, k, k, prime);
+    nmod_poly_mat_init(N, k, m, prime);
+    nmod_poly_mat_init(Qt, k, k, prime);
+    nmod_poly_mat_init(Pt, k, k, prime);
+    nmod_pseudo_Krylov_recursive(D, N, Qt, Pt, Q, P, NULL, a, m);
+
+    nmod_poly_mat_t v;
+    nmod_poly_mat_init(v, k, 1, prime);
+    nmod_poly_mat_mul(v, D, a);
+
+    nmod_poly_mat_t K;
+    nmod_poly_mat_init(K, r, n, prime);
+    for (slong i = 0; i < k; i++)
+    {
+        nmod_poly_set(nmod_poly_mat_entry(K, i, 0), nmod_poly_mat_entry(v, i, 0));
+        for (slong j = 0; j < m; j++)
+            nmod_poly_set(nmod_poly_mat_entry(K, i, j + 1), nmod_poly_mat_entry(N, i, j));
+    }
+
+    /* trace row: entry j = g_j p_r^{m-j}, where (Tr y)^{(j)} = g_j / p_r^{j+1},
+     * g_0 = -p_{r-1}, g_{j+1} = g_j' p_r - (j+1) g_j p_r' */
+    const nmod_poly_struct * pr = nmod_poly_mat_entry(PT, r, 0);
+    nmod_poly_t g, dg, dpr, t, prpow;
+    nmod_poly_init(g, prime);
+    nmod_poly_init(dg, prime);
+    nmod_poly_init(dpr, prime);
+    nmod_poly_init(t, prime);
+    nmod_poly_init(prpow, prime);
+    nmod_poly_derivative(dpr, pr);
+    nmod_poly_neg(g, nmod_poly_mat_entry(PT, r - 1, 0));
+    for (slong j = 0; j <= m; j++)
+    {
+        nmod_poly_set(nmod_poly_mat_entry(K, k, j), g);
+        nmod_poly_derivative(dg, g);
+        nmod_poly_mul(dg, dg, pr);
+        nmod_poly_mul(t, g, dpr);
+        nmod_poly_scalar_mul_nmod(t, t, (ulong) (j + 1) % prime);
+        nmod_poly_sub(g, dg, t);
+    }
+    nmod_poly_one(prpow);
+    for (slong j = m; j >= 0; j--)
+    {
+        nmod_poly_mul(nmod_poly_mat_entry(K, k, j), nmod_poly_mat_entry(K, k, j), prpow);
+        nmod_poly_mul(prpow, prpow, pr);
+    }
+
+    slong * pivind = flint_malloc(n * sizeof(slong));
+    slong * shift = flint_calloc(n, sizeof(slong));
+    slong nz = nmod_poly_mat_kernel(LT, pivind, shift, K, ORD_WEAK_POPOV, COL_UPPER);
+    flint_free(pivind);
+    flint_free(shift);
+
+    nmod_poly_clear(g);
+    nmod_poly_clear(dg);
+    nmod_poly_clear(dpr);
+    nmod_poly_clear(t);
+    nmod_poly_clear(prpow);
+    flint_rand_clear(state);
+    nmod_poly_mat_clear(Q);
+    nmod_poly_mat_clear(P);
+    nmod_poly_mat_clear(a);
+    nmod_poly_mat_clear(D);
+    nmod_poly_mat_clear(N);
+    nmod_poly_mat_clear(Qt);
+    nmod_poly_mat_clear(Pt);
+    nmod_poly_mat_clear(v);
+    nmod_poly_mat_clear(K);
+    nmod_poly_clear(phi1);
+    nmod_poly_mat_clear(iPyT);
+    nmod_poly_mat_clear(CT);
+    nmod_poly_clear(Delta);
+
+    return nz;
+}

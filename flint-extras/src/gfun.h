@@ -462,6 +462,24 @@ void nmod_algeqtodiffeq_pseudo_krylov_description(nmod_poly_mat_t D, nmod_poly_m
  */
 slong nmod_algeq_to_diffeq_recursive(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
 
+/** Irreducible left description Q^{-1}P of T_b = T without its first row
+ *  and column (the quotient by k(x).1), Q, P (r-1) x (r-1), r >= 2; same
+ *  construction as nmod_algeqtodiffeq_T_left_description, throws unless
+ *  exactly r-1 rows pass. See algeqtodiffeq_recursive.c.
+ */
+void nmod_algeqtodiffeq_Tb_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P,
+                                           const nmod_poly_t phi1,
+                                           const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
+                                           const nmod_poly_t Delta);
+
+/** Cockle's algorithm via the recursive algorithm on the quotient by the
+ *  trace: recursion in dimension r-1 on T_b, plus the trace row
+ *  p_r^{m+1} ((Tr y)^{(j)})_j in the final kernel. Same convention and
+ *  output as nmod_algeq_to_diffeq_recursive; requires n >= 2, r >= 2 and
+ *  r invertible mod p. See algeqtodiffeq_recursive.c.
+ */
+slong nmod_algeq_to_diffeq_recursive_trace(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
+
 /** The "Series" (heuristic) family, algeqtodiffeq's fourth pseudo-Krylov
  *  approach (draft nmod_algeq_to_diffeq_series_phi1, gfun.c, not otherwise
  *  touched) -- no numbered algorithm in algos.pdf/G2026.pdf to cross-check
