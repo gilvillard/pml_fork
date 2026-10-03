@@ -551,6 +551,14 @@ void nmod_algeqtodiffeq_series_left_description(nmod_poly_mat_t N, nmod_poly_mat
  */
 slong nmod_algeq_to_diffeq_series_left(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
 
+/** Modified series heuristic: no description of K, the solutions are the
+ *  low-degree rows of one zero-shift approximant basis of K^T, with a
+ *  priori degree cutoff and order; throws unless exactly m-r+1 rows pass.
+ *  Same convention and output as the other drivers; requires n >= r+1,
+ *  meant for m well above r. See algeqtodiffeq_series.c.
+ */
+slong nmod_algeq_to_diffeq_series_guess(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
+
 slong nmod_algeq_to_diffeq_last(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
 
 slong nmod_algeq_to_diffeq_last_phi1(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);

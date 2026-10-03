@@ -476,3 +476,93 @@ slong nmod_algeq_to_diffeq_series_left(nmod_poly_mat_t LT, const nmod_poly_mat_t
 
     return nz;
 }
+
+
+/** Modified series heuristic (pk_main.tex Sec. 6): no description of K. The
+ *  solutions eta (K eta = 0, K = [a, theta(a), ..., theta^m(a)], a = y,
+ *  m = n-1) are the rows of degree <= nu of a zero-shift minimal approximant
+ *  basis of K^T ((m+1) x r) at order sigma: with K = D^{-1}N, N eta has
+ *  degree <= nu + deg N and vanishes mod x^sigma, so sigma > nu + deg N
+ *  makes those rows exact. A priori parameters: nu = ceil(m deg(phi1) /
+ *  (m-r+1)) + NMOD_GFUN_DESCRIPTION_MARGIN (G2026 Thm 7; generic minimal
+ *  bases are balanced), sigma = nu + target + 1 + NMOD_GFUN_NONPROPER_MARGIN,
+ *  target from nmod_algeqtodiffeq_series_parameters (bounds deg N).
+ *  Requires n >= r+1, and phi1(0) != 0 as nmod_pseudo_Krylov_series. Throws
+ *  unless exactly m-r+1 rows pass (fewer: nu too small; more: sigma too
+ *  small, or a minimal order below r). Same output convention as the other
+ *  drivers; meant for m well above r.
+ */
+slong nmod_algeq_to_diffeq_series_guess(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n)
+{
+    ulong prime = nmod_poly_mat_modulus(PT);
+    slong r = (PT->r) - 1;
+    slong m = n - 1;
+
+    if (m < r)
+        flint_throw(FLINT_DOMERR, "nmod_algeq_to_diffeq_series_guess: needs n >= r+1\n");
+
+    nmod_poly_t Delta;
+    nmod_poly_mat_t iPyT, CT;
+    nmod_algeqtodiffeq_setup(Delta, iPyT, CT, PT);
+
+    /* same per-call seeding as nmod_algeq_to_diffeq_series_left */
+    flint_rand_t state;
+    flint_rand_init(state);
+    srand((unsigned int) clock());
+    flint_rand_set_seed(state, rand(), rand());
+
+    nmod_poly_t phi1;
+    nmod_poly_init(phi1, prime);
+    nmod_algeqtodiffeq_rescale_by_phi1(phi1, CT, PT, Delta, state);
+    flint_rand_clear(state);
+
+    slong target_degree, sigma_desc, N_desc;
+    nmod_algeqtodiffeq_series_parameters(&target_degree, &sigma_desc, &N_desc, phi1, r, n);
+    slong deg_phi1 = nmod_poly_degree(phi1);
+    slong nu = (m * deg_phi1 + m - r) / (m - r + 1) + NMOD_GFUN_DESCRIPTION_MARGIN; /* ceil */
+    slong sigma = nu + target_degree + 1 + NMOD_GFUN_NONPROPER_MARGIN;
+
+    nmod_poly_mat_t K;
+    nmod_poly_mat_init(K, r, n, prime);
+    slong prec = nmod_pseudo_Krylov_series(K, phi1, CT, PT, n, sigma + n - 1);
+    if (prec < sigma)
+        flint_throw(FLINT_ERROR, "nmod_algeq_to_diffeq_series_guess: precision %wd < order %wd\n",
+                    prec, sigma);
+
+    nmod_poly_mat_t KT, appbas;
+    nmod_poly_mat_init(KT, n, r, prime);
+    for (slong i = 0; i < r; i++)
+        for (slong j = 0; j < n; j++)
+            nmod_poly_set_trunc(nmod_poly_mat_entry(KT, j, i), nmod_poly_mat_entry(K, i, j), sigma);
+
+    nmod_poly_mat_init(appbas, n, n, prime);
+    slong * shift = flint_calloc(n, sizeof(slong));
+    nmod_poly_mat_pmbasis(appbas, shift, KT, sigma);
+
+    slong nz = 0;
+    for (slong i = 0; i < n; i++)
+    {
+        if (shift[i] > nu)
+            continue;
+        if (nz == m - r + 1)
+            flint_throw(FLINT_ERROR, "nmod_algeq_to_diffeq_series_guess: more than m-r+1 "
+                        "rows of degree at most %wd (order %wd too small?)\n", nu, sigma);
+        for (slong j = 0; j < n; j++)
+            nmod_poly_set(nmod_poly_mat_entry(LT, j, nz), nmod_poly_mat_entry(appbas, i, j));
+        nz++;
+    }
+    if (nz < m - r + 1)
+        flint_throw(FLINT_ERROR, "nmod_algeq_to_diffeq_series_guess: only %wd rows of degree "
+                    "at most %wd, expected %wd (nu too small?)\n", nz, nu, m - r + 1);
+
+    flint_free(shift);
+    nmod_poly_mat_clear(K);
+    nmod_poly_mat_clear(KT);
+    nmod_poly_mat_clear(appbas);
+    nmod_poly_mat_clear(iPyT);
+    nmod_poly_mat_clear(CT);
+    nmod_poly_clear(Delta);
+    nmod_poly_clear(phi1);
+
+    return nz;
+}
