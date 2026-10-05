@@ -56,9 +56,11 @@
  *  3 x 4, d_i up to 3), the minimal left description of the exact Krylov
  *  matrix had balanced row degrees (min and max differ by at most 1) summing
  *  to exactly B, which was also exactly deg L -- so its max row degree was
- *  ceil(B/R) every time. B is Bostan's experimental degree bound (PhD thesis
- *  2003, Chap. 10, quoted in G2026 Sec. 5), itself a conjecture, not a
- *  theorem. The margin covers the gap; a too-small target makes
+ *  ceil(B/R) every time. B is Bostan's degree bound on deg L (PhD thesis
+ *  2003, Chap. 10, Thm. 18 -- a theorem there, although G2026 Sec. 5 quotes it
+ *  as experimental); that the description's row degrees sum to B (deg_M of
+ *  the Krylov matrix = B, no zeros) and are balanced is observed, not proved.
+ *  The margin covers the gap; a too-small target makes
  *  nmod_symprod_series_left_description throw.
  *
  *  NOT valid as is when some r_i = 1: there B still bounds deg L, but the
