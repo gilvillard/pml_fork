@@ -17,7 +17,9 @@
 #include <flint/nmod_poly_mat.h>
 #include <flint/ulong_extras.h>
 
+#include "nmod_poly_mat_forms.h" // for column degrees
 #include "nmod_poly_mat_multiply.h"
+#include "impl.h"
 
 #if PML_HAVE_MACHINE_VECTORS
 
@@ -82,6 +84,25 @@ static double _now(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &t
     the rows of A -- and, if that is still not enough, the columns of B
     -- are processed by groups until it does (see the choice of NRG and
     NCG below).
+
+    The same routine computes middle products: only the coefficients
+    nlo, ..., nhi-1 of each entry of A*B are wanted, which is the window
+    [nlo, nhi) of a convolution of length lenA + lenB - 1. The plan is
+    built for that window, so that when a power of two N with
+    max(lenA, lenB, nhi) <= N and lenA + lenB - 1 - N <= nlo exists, the
+    transforms have length N and the coefficients the cyclic convolution
+    folds back land below nlo, where nothing is read (for the balanced
+    middle product of the approximant basis algorithms, lenA = nlo + 1 and
+    lenB = nhi, such an N always exists: the next power of two above nhi).
+    Otherwise the full product is transformed, as for a multiplication.
+    Either way only the window is reconstructed. Everything else --
+    transforms, tiles, pointwise stage, grouping, threads -- is shared with
+    the multiplication.
+
+    TODO the transposed algorithm, which transforms at length about nhi
+    whatever nhi is, would need the transposes of the fft_small transforms;
+    the only steps that change would be the transform of B and the inverse
+    transform of C.
 */
 
 /*
@@ -328,9 +349,7 @@ static void _tiles_gather(fft_small_op_t X, const _tiles_struct * R, ulong o,
     }
 }
 
-/* zero the tiles of op o, for an entry which is the zero polynomial;
-   used when the sparsity structure is not built and the pointwise stage
-   therefore reads every tile (see use_sparse) */
+/* zero the tiles of op o, for an entry which is the zero polynomial */
 static void _tiles_zero(const _tiles_struct * R, ulong o, const fft_small_plan_t P)
 {
     ulong pi, ti;
@@ -394,13 +413,11 @@ typedef struct
     slong cstride;  /* NCG: column stride of the C and B blocks */
     ulong T;
     ulong ntiles;
-    const slong * jlist;
-    const slong * jcount;
     const slong * zlen;
     const slong * nzA;
     const slong * cntA;
-    int Bdense;
-    int use_sparse;
+    slong nlo;      /* the window of coefficients of C that is wanted */
+    slong nhi;
 
     /* per worker */
     fft_small_op_t X;
@@ -429,7 +446,7 @@ static void _worker_fft_B(void * varg)
             nmod_poly_mat_entry(W->B, o % W->k, W->h + o / W->k);
         if (b->length > 0)
             _transform_entry(W->Bt, o, W->X, b, 1, W->mod, W->P);
-        else if (!W->use_sparse)
+        else
             _tiles_zero(W->Bt, o, W->P);
     }
 }
@@ -445,8 +462,8 @@ static void _worker_fft_A(void * varg)
         const nmod_poly_struct * a = nmod_poly_mat_entry(W->A, W->g + o / W->k, o % W->k);
         if (a->length > 0)
             _transform_entry(W->At, o, W->X, a, 0, W->mod, W->P);
-        else if (!W->use_sparse)
-            _tiles_zero(W->At, o, W->P);
+        /* else: a zero entry is left untouched, as the pointwise stage reaches
+           the tiles of A only through nzA which lists the nonzero ones */
     }
 }
 
@@ -475,90 +492,42 @@ static void _worker_pointwise(void * varg)
         double * Cblk = _tile(W->Ct, pi, ti, 0);
         slong r, i, j, l;
 
-        if (W->Bdense)
+        /* every tile of B is materialised, zero or not, so a whole
+           block of columns is handled at once: blocks of 8 columns of B
+           outermost, so that their 8*k tiles are reused from L1 across
+           the rows of A. A's sparsity is exploited through nzA/cntA,
+           which costs O(nrows*k) to build. */
+        for (j = 0; j < n; j += 8)
         {
-            /* B without zero entries: every column is full for every
-               row. Blocks of 8 columns of B outermost, so that their
-               8*k tiles are reused from L1 across the rows of A. */
-            for (j = 0; j < n; j += 8)
+            const slong nc = FLINT_MIN(8, n - j);
+            slong c;
+
+            for (c = 0; c < nc; c++)
+                for (l = 0; l < k; l++)
+                    W->bfull[c * k + l] = Bblk + ((j + c) * k + l) * T;
+
+            for (r = 0; r < nrows; r++)
             {
-                const slong nc = FLINT_MIN(8, n - j);
-                slong c;
+                const slong ca = W->cntA[r];
+                const slong * lstA = W->nzA + r * k;
+                const double * const ** btab = W->bfullcol;
 
-                for (c = 0; c < nc; c++)
-                    for (l = 0; l < k; l++)
-                        W->bfull[c * k + l] = Bblk + ((j + c) * k + l) * T;
-
-                for (r = 0; r < nrows; r++)
-                {
-                    const slong ca = W->cntA[r];
-                    const slong * lstA = W->nzA + r * k;
-                    const double * const ** btab = W->bfullcol;
-
-                    if (ca == 0)
-                        continue;
-
-                    for (i = 0; i < ca; i++)
-                        W->aptr[i] = Ablk + (r * k + lstA[i]) * T;
-                    if (ca < k)   /* A[g+r][l] == 0 for some l */
-                    {
-                        for (c = 0; c < nc; c++)
-                            for (i = 0; i < ca; i++)
-                                W->bptr[c * k + i] = Bblk + ((j + c) * k + lstA[i]) * T;
-                        btab = W->bcol;
-                    }
-                    for (c = 0; c < nc; c++)
-                        W->zptr[c] = Cblk + (r * cs + j + c) * T;
-
-                    _dot_tile(W->zptr, W->aptr, btab, nc, ca, T, nn, ninv);
-                }
-            }
-            continue;
-        }
-
-        for (r = 0; r < nrows; r++)
-        {
-            const slong ca = W->cntA[r];
-            const slong * lstA = W->nzA + r * k;
-            slong nfull = 0;
-
-            if (ca == 0)
-                continue;
-
-            for (i = 0; i < ca; i++)
-                W->aptr[i] = Ablk + (r * k + lstA[i]) * T;
-
-            /* the columns whose list of nonzero products is the whole
-               list of nonzero entries of the row: blocked together */
-            for (j = 0; j < n; j++)
-                if (W->jcount[r * cs + j] == ca)
-                {
-                    for (i = 0; i < ca; i++)
-                        W->bptr[nfull * k + i] = Bblk + (j * k + lstA[i]) * T;
-                    W->zptr[nfull++] = Cblk + (r * cs + j) * T;
-                    if (nfull == 8)   /* the width _dot_tile works at */
-                    {
-                        _dot_tile(W->zptr, W->aptr, W->bcol, 8, ca, T, nn, ninv);
-                        nfull = 0;
-                    }
-                }
-            if (nfull > 0)
-                _dot_tile(W->zptr, W->aptr, W->bcol, nfull, ca, T, nn, ninv);
-
-            /* the others, one at a time */
-            for (j = 0; j < n; j++)
-            {
-                const slong cnt = W->jcount[r * cs + j];
-                const slong * lst = W->jlist + ((ulong) r * cs + j) * k;
-                if (cnt == 0 || cnt == ca)
+                if (ca == 0)
                     continue;
-                for (i = 0; i < cnt; i++)
+
+                for (i = 0; i < ca; i++)
+                    W->aptr[i] = Ablk + (r * k + lstA[i]) * T;
+                if (ca < k)   /* A[g+r][l] == 0 for some l */
                 {
-                    W->aptr[i] = Ablk + (r * k + lst[i]) * T;
-                    W->bptr[i] = Bblk + (j * k + lst[i]) * T;
+                    for (c = 0; c < nc; c++)
+                        for (i = 0; i < ca; i++)
+                            W->bptr[c * k + i] = Bblk + ((j + c) * k + lstA[i]) * T;
+                    btab = W->bcol;
                 }
-                W->zptr[0] = Cblk + (r * cs + j) * T;
-                _dot_tile(W->zptr, W->aptr, W->bcol, 1, cnt, T, nn, ninv);
+                for (c = 0; c < nc; c++)
+                    W->zptr[c] = Cblk + (r * cs + j + c) * T;
+
+                _dot_tile(W->zptr, W->aptr, btab, nc, ca, T, nn, ninv);
             }
         }
     }
@@ -577,9 +546,11 @@ static void _worker_ifft(void * varg)
         const slong oo = (o / nc) * cs + o % nc;
         nmod_poly_struct * c =
             nmod_poly_mat_entry(W->C, W->g + o / nc, W->h + o % nc);
-        const slong zl = W->zlen[oo];
+        /* the coefficients nlo .. zh-1 of the product entry, the ones
+           above its length being zero */
+        const slong zh = FLINT_MIN(W->zlen[oo], W->nhi);
 
-        if (W->jcount[oo] == 0)
+        if (zh <= W->nlo)
         {
             nmod_poly_zero(c);
             continue;
@@ -588,9 +559,9 @@ static void _worker_ifft(void * varg)
         _tiles_gather(W->X, W->Ct, oo, W->P);
         W->X->domain = FFT_SMALL_OP_PRODUCT;
         fft_small_ifft(W->X, W->P);
-        nmod_poly_fit_length(c, zl);
-        fft_small_export_nmod_range(c->coeffs, W->X, 0, zl, W->mod, W->P);
-        _nmod_poly_set_length(c, zl);
+        nmod_poly_fit_length(c, zh - W->nlo);
+        fft_small_export_nmod_range(c->coeffs, W->X, W->nlo, zh, W->mod, W->P);
+        _nmod_poly_set_length(c, zh - W->nlo);
         _nmod_poly_normalise(c);
     }
 }
@@ -620,58 +591,59 @@ static void _sd_fft_direct_run(void (* func)(void *),
         thread_pool_wait(global_thread_pool, handles[i - 1]);
 }
 
-void nmod_poly_mat_mul_sd_fft_direct(nmod_poly_mat_t C,
-                                  const nmod_poly_mat_t A,
-                                  const nmod_poly_mat_t B)
+/*
+    The driver: C = the coefficients nlo, ..., nhi-1 of A * B, where the
+    entries of A and B have length at most lenA and lenB (both > 0) and
+    0 <= nlo < nhi <= lenA + lenB - 1; a plain product is nlo = 0,
+    nhi = lenA + lenB - 1. C must not alias A or B, m, k, n are nonzero.
+    membytes is the soft bound on the memory for the transforms, 0 for
+    the default.
+*/
+static void _sd_fft_direct(nmod_poly_mat_t C,
+                           const nmod_poly_mat_t A, slong lenA,
+                           const nmod_poly_mat_t B, slong lenB,
+                           slong nlo, slong nhi, ulong membytes)
 {
     const slong m = A->r;
     const slong k = A->c;
     const slong n = B->c;
-    const slong lenA = nmod_poly_mat_max_length(A);
-    const slong lenB = nmod_poly_mat_max_length(B);
-
-    if (m == 0 || n == 0)
-        return;
-
-    if (k == 0 || lenA == 0 || lenB == 0)
-    {
-        nmod_poly_mat_zero(C);
-        return;
-    }
-
-    if (C == A || C == B)
-    {
-        nmod_poly_mat_t T;
-        nmod_poly_mat_init(T, m, n, A->modulus);
-        nmod_poly_mat_mul_sd_fft_direct(T, A, B);
-        nmod_poly_mat_swap_entrywise(C, T);
-        nmod_poly_mat_clear(T);
-        return;
-    }
 
     nmod_t mod;
     nmod_init(&mod, A->modulus);
 
-    /* plan: output window is the full product; at most
+    /* plan: output window [nlo, nhi) of the product of length zn; at most
        k * min(lenA, lenB) products of two residues accumulate onto one
        output coefficient. The direct single-prime transform modulo p is
        forced whenever p allows it (direct_len = UWORD_MAX): its setup
        cost, proportional to the transform length, is amortized over the
        m*k + k*n + m*n transforms performed here, unlike in a single
-       polynomial product. */
+       polynomial product.
+
+       xtrunc_max, the largest truncation an operand is transformed with,
+       only matters to the plan for the wraparound test (operands must
+       fit in the cyclic length). Below one block the operands are
+       transformed at the full transform length (see _op_trunc), so their
+       length itself is what must fit; for a plain product this makes no
+       difference and the historical value is kept. */
     const ulong zn = (ulong) lenA + lenB - 1;
-    const ulong xtrunc_max = n_max(n_round_up(lenA, BLK_SZ), n_round_up(lenB, BLK_SZ));
+    const ulong lmax = n_max(lenA, lenB);
+    const ulong xtrunc_max = (nlo == 0 || lmax >= BLK_SZ)
+                             ? n_max(n_round_up(lenA, BLK_SZ), n_round_up(lenB, BLK_SZ))
+                             : lmax;
     const ulong len_bound = (ulong) k * n_min(lenA, lenB);
     mpn_ctx_struct * R = get_default_mpn_ctx();
     fft_small_plan_t P;
 
-    if (!fft_small_plan_init_nmod(P, R, 0, zn, zn, xtrunc_max, len_bound,
+    if (!fft_small_plan_init_nmod(P, R, nlo, nhi, zn, xtrunc_max, len_bound,
                                   2 * NMOD_BITS(mod), mod, UWORD_MAX))
     {
         /* bound beyond the capacity of the eight primes: needs
            k * min(lenA, lenB) > 2^(400 - 2*64), which no representable
            matrix reaches */
-        nmod_poly_mat_mul(C, A, B);
+        if (nlo == 0 && (ulong) nhi == zn)
+            nmod_poly_mat_mul(C, A, B);
+        else
+            _nmod_poly_mat_mulmid_naive(C, A, lenA, B, lenB, nlo, nhi);
         return;
     }
 
@@ -720,11 +692,13 @@ void nmod_poly_mat_mul_sd_fft_direct(nmod_poly_mat_t C,
     /* words of the operands and of the result, as the scale of the bound
        on the transforms (see NMOD_POLY_MAT_MUL_SD_FFT_DIRECT_MEM_FLOOR) */
     const ulong opwords = (ulong) m * k * lenA + (ulong) k * n * lenB
-                          + (ulong) m * n * zn;
-    ulong bbytes = n_max(NMOD_POLY_MAT_MUL_SD_FFT_DIRECT_MEM_FLOOR,
-                         2 * opwords * sizeof(ulong));
+                          + (ulong) m * n * (nhi - nlo);
+    ulong bbytes = (membytes != 0)
+                   ? membytes
+                   : n_max(NMOD_POLY_MAT_MUL_SD_FFT_DIRECT_MEM_FLOOR,
+                           2 * opwords * sizeof(ulong));
 #ifdef PML_MUL_SD_FFT_DIRECT_TIMING
-    if (getenv("PML_MEM_BUDGET"))
+    if (membytes == 0 && getenv("PML_MEM_BUDGET"))
         bbytes = strtoul(getenv("PML_MEM_BUDGET"), NULL, 10);
 #endif
 
@@ -767,45 +741,19 @@ void nmod_poly_mat_mul_sd_fft_direct(nmod_poly_mat_t C,
     _tiles_struct At = { Bt.data + Bt.nops * opdbls, (ulong) NRG * k, ntiles, T };
     _tiles_struct Ct = { At.data + At.nops * opdbls, (ulong) NRG * NCG, ntiles, T };
 
-    /*
-        Whether to build the per-pair sparsity structure. It costs
-        NRG*NCG*k words, and as many operations to build, against the
-        np*ztrunc doubles that each skipped product saves -- so it is
-        worth having only when the transforms are long compared with the
-        inner dimension, and it must not dwarf the storage it is meant to
-        save work on. Both conditions hold comfortably over the whole
-        range where this routine is selected; they fail together at large
-        dimension and short length, where NRG*NCG*k reaches tens of
-        gigabytes (dimension 4000, length 2: 68GB against a 1.8GB bound
-        on the transforms, and 15s spent building it at dimension 1000
-        alone).
-
-        Without it, the transforms of zero entries are materialised as
-        zeros so that the pointwise stage can read every tile, the dense
-        path is used throughout, and the lengths of the entries of C are
-        bounded by row and column maxima rather than computed exactly --
-        an upper bound is all they have to be, the export trims what it
-        does not need.
-    */
-    const int use_sparse = (np * ztrunc >= 64)
-        && ((double) NRG * NCG * k * sizeof(slong) <= (double) bbytes);
-
     /* structure of the products, for the current block of rows and
        columns: nzA[r*k ..] lists the l with A[g+r][l] != 0 (cntA[r] of
-       them) and rowmaxA[r] is the largest of their lengths; colmaxB[jj]
-       is the same down the column h+jj of B; for each (r, jj),
-       jlist[(r*NCG+jj)*k ..] lists the l with A[g+r][l] and B[l][h+jj]
-       both nonzero (jcount[r*NCG+jj] of them, and only whether that is
-       zero is read when !use_sparse), and zlen[r*NCG+jj] bounds the
-       length of C[g+r][h+jj] */
-    slong * jlist = use_sparse ? FLINT_ARRAY_ALLOC((ulong) NRG * NCG * k, slong)
-                               : NULL;
-    slong * jcount = FLINT_ARRAY_ALLOC((ulong) NRG * NCG, slong);
+       them) and rowmaxA[r] is the largest of their lengths; cdegB[j] is
+       the degree of the column j of B, -1 for a zero column, and does not
+       depend on the grouping, so it is taken once for the whole of B;
+       zlen[r*NCG+jj] bounds the length of C[g+r][h+jj], and is zero when
+       that entry is known to vanish */
     slong * zlen = FLINT_ARRAY_ALLOC((ulong) NRG * NCG, slong);
     slong * nzA = FLINT_ARRAY_ALLOC((ulong) NRG * k, slong);
     slong * cntA = FLINT_ARRAY_ALLOC(NRG, slong);
     slong * rowmaxA = FLINT_ARRAY_ALLOC(NRG, slong);
-    slong * colmaxB = FLINT_ARRAY_ALLOC(NCG, slong);
+    slong * cdegB = FLINT_ARRAY_ALLOC(n, slong);
+    nmod_poly_mat_column_degree(cdegB, B, NULL);
 
     _sd_fft_direct_worker_struct * W =
         FLINT_ARRAY_ALLOC(nthreads, _sd_fft_direct_worker_struct);
@@ -821,10 +769,9 @@ void nmod_poly_mat_mul_sd_fft_direct(nmod_poly_mat_t C,
             W[w].g = 0; W[w].nrows = 0;
             W[w].h = 0; W[w].ncols = 0; W[w].cstride = NCG;
             W[w].T = T; W[w].ntiles = ntiles;
-            W[w].jlist = jlist; W[w].jcount = jcount; W[w].zlen = zlen;
+            W[w].zlen = zlen;
             W[w].nzA = nzA; W[w].cntA = cntA;
-            W[w].Bdense = 0;
-            W[w].use_sparse = use_sparse;
+            W[w].nlo = nlo; W[w].nhi = nhi;
 
             fft_small_op_init_borrowed(W[w].X, P, buf + (ulong) w * scratchdbls);
             /* the transforms only write the ztrunc points they use, but
@@ -856,34 +803,11 @@ void nmod_poly_mat_mul_sd_fft_direct(nmod_poly_mat_t C,
     {
         const slong ncols = FLINT_MIN(NCG, n - h);
         slong r, j, l, w;
-        int Bdense = 1;
-
-        /* a block of B without zero entries has every column full for
-           every row of A, which lets the pointwise stage put the
-           columns of B outermost (see _worker_pointwise); the same scan
-           gives the largest length down each column, which bounds the
-           lengths of C when the sparsity structure is not built */
-        for (j = 0; j < ncols; j++)
-        {
-            slong cmax = 0;
-            for (l = 0; l < k; l++)
-            {
-                const slong lb = nmod_poly_mat_entry(B, l, h + j)->length;
-                if (lb == 0)
-                    Bdense = 0;
-                else
-                    cmax = FLINT_MAX(cmax, lb);
-            }
-            colmaxB[j] = cmax;
-        }
-        if (!use_sparse)   /* every tile of B is materialised, zero or not */
-            Bdense = 1;
 
         for (w = 0; w < nthreads; w++)
         {
             W[w].h = h;
             W[w].ncols = ncols;
-            W[w].Bdense = Bdense;
         }
 
         /* B: op jj*k + l <- transform of B[l][h+jj] (column major, so
@@ -920,42 +844,13 @@ void nmod_poly_mat_mul_sd_fft_direct(nmod_poly_mat_t C,
                 rowmaxA[r] = rmax;
             }
 
-            if (use_sparse)
-            {
-                for (r = 0; r < nrows; r++)
-                    for (j = 0; j < ncols; j++)
-                    {
-                        slong zl = 0, cnt = 0;
-                        slong * lst = jlist + ((ulong) r * NCG + j) * k;
-                        for (l = 0; l < k; l++)
-                        {
-                            const slong la = nmod_poly_mat_entry(A, g + r, l)->length;
-                            const slong lb = nmod_poly_mat_entry(B, l, h + j)->length;
-                            if (la > 0 && lb > 0)
-                            {
-                                lst[cnt++] = l;
-                                zl = FLINT_MAX(zl, la + lb - 1);
-                            }
-                        }
-                        jcount[r * NCG + j] = cnt;
-                        zlen[r * NCG + j] = zl;
-                    }
-            }
-            else
-            {
-                /* no per-pair scan: an entry of C is taken to be nonzero
-                   as soon as its row of A and its column of B are, and
-                   its length is bounded by the two maxima. Both are
-                   upper bounds, which is all the inverse transform and
-                   the export need */
-                for (r = 0; r < nrows; r++)
-                    for (j = 0; j < ncols; j++)
-                    {
-                        const int nz = (cntA[r] > 0 && colmaxB[j] > 0);
-                        jcount[r * NCG + j] = nz;
-                        zlen[r * NCG + j] = nz ? rowmaxA[r] + colmaxB[j] - 1 : 0;
-                    }
-            }
+            /* bounds on the lengths of entries of C */
+            for (r = 0; r < nrows; r++)
+                for (j = 0; j < ncols; j++)
+                {
+                    const int nz = (cntA[r] > 0 && cdegB[h + j] >= 0);
+                    zlen[r * NCG + j] = nz ? rowmaxA[r] + cdegB[h + j] : 0;
+                }
             TIMING_MARK(_tA);
 
             _sd_fft_direct_run(_worker_pointwise, W, nthreads, handles,
@@ -981,19 +876,92 @@ void nmod_poly_mat_mul_sd_fft_direct(nmod_poly_mat_t C,
             flint_free(W[w].bfull);
             flint_free(W[w].bfullcol);
             flint_free(W[w].zptr);
+            fft_small_op_clear(W[w].X);   /* borrowed: frees nothing */
         }
     }
     flint_free(W);
-    flint_free(jlist);
     flint_free(rowmaxA);
-    flint_free(colmaxB);
-    flint_free(jcount);
+    flint_free(cdegB);
     flint_free(zlen);
     flint_free(nzA);
     flint_free(cntA);
     _sd_fft_direct_free(buf, nbytes, bbytes);
     flint_give_back_threads(handles, nworkers);
     fft_small_plan_clear(P);
+}
+
+void nmod_poly_mat_mul_sd_fft_direct(nmod_poly_mat_t C,
+                                  const nmod_poly_mat_t A,
+                                  const nmod_poly_mat_t B)
+{
+    const slong m = A->r;
+    const slong k = A->c;
+    const slong n = B->c;
+    const slong lenA = nmod_poly_mat_max_length(A);
+    const slong lenB = nmod_poly_mat_max_length(B);
+
+    if (m == 0 || n == 0)
+        return;
+
+    if (k == 0 || lenA == 0 || lenB == 0)
+    {
+        nmod_poly_mat_zero(C);
+        return;
+    }
+
+    if (C == A || C == B)
+    {
+        nmod_poly_mat_t T;
+        nmod_poly_mat_init(T, m, n, A->modulus);
+        nmod_poly_mat_mul_sd_fft_direct(T, A, B);
+        nmod_poly_mat_swap_entrywise(C, T);
+        nmod_poly_mat_clear(T);
+        return;
+    }
+
+    _sd_fft_direct(C, A, lenA, B, lenB, 0, lenA + lenB - 1, 0);
+}
+
+void _nmod_poly_mat_mulmid_sd_fft_direct_bounded(nmod_poly_mat_t res,
+                                        const nmod_poly_mat_t pmat1, slong len1,
+                                        const nmod_poly_mat_t pmat2, slong len2,
+                                        slong nlo, slong nhi, ulong membytes)
+{
+    const slong m = pmat1->r;
+    const slong k = pmat1->c;
+    const slong n = pmat2->c;
+
+    if (m == 0 || n == 0)
+        return;
+
+    nhi = FLINT_MIN(nhi, len1 + len2 - 1);
+    if (k == 0 || len1 <= 0 || len2 <= 0 || nlo >= nhi)
+    {
+        nmod_poly_mat_zero(res);
+        return;
+    }
+
+    if (res == pmat1 || res == pmat2)
+    {
+        nmod_poly_mat_t T;
+        nmod_poly_mat_init(T, m, n, pmat1->modulus);
+        _nmod_poly_mat_mulmid_sd_fft_direct_bounded(T, pmat1, len1, pmat2, len2,
+                                                    nlo, nhi, membytes);
+        nmod_poly_mat_swap_entrywise(res, T);
+        nmod_poly_mat_clear(T);
+        return;
+    }
+
+    _sd_fft_direct(res, pmat1, len1, pmat2, len2, nlo, nhi, membytes);
+}
+
+void _nmod_poly_mat_mulmid_sd_fft_direct(nmod_poly_mat_t res,
+                                        const nmod_poly_mat_t pmat1, slong len1,
+                                        const nmod_poly_mat_t pmat2, slong len2,
+                                        slong nlo, slong nhi)
+{
+    _nmod_poly_mat_mulmid_sd_fft_direct_bounded(res, pmat1, len1, pmat2, len2,
+                                                nlo, nhi, 0);
 }
 
 #else  /* PML_HAVE_MACHINE_VECTORS */
@@ -1003,6 +971,23 @@ void nmod_poly_mat_mul_sd_fft_direct(nmod_poly_mat_t C,
                                   const nmod_poly_mat_t B)
 {
     nmod_poly_mat_mul(C, A, B);
+}
+
+void _nmod_poly_mat_mulmid_sd_fft_direct_bounded(nmod_poly_mat_t res,
+                                        const nmod_poly_mat_t pmat1, slong len1,
+                                        const nmod_poly_mat_t pmat2, slong len2,
+                                        slong nlo, slong nhi, ulong membytes)
+{
+    (void) membytes;
+    _nmod_poly_mat_mulmid_naive(res, pmat1, len1, pmat2, len2, nlo, nhi);
+}
+
+void _nmod_poly_mat_mulmid_sd_fft_direct(nmod_poly_mat_t res,
+                                        const nmod_poly_mat_t pmat1, slong len1,
+                                        const nmod_poly_mat_t pmat2, slong len2,
+                                        slong nlo, slong nhi)
+{
+    _nmod_poly_mat_mulmid_naive(res, pmat1, len1, pmat2, len2, nlo, nhi);
 }
 
 #endif  /* PML_HAVE_MACHINE_VECTORS */
