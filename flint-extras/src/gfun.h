@@ -101,6 +101,14 @@ static inline slong nmod_gfun_delta_T_degree_bound(slong r, slong d)
  */
 #define NMOD_GFUN_DESCRIPTION_MARGIN 8
 
+/** Base size s0 of the divide-and-conquer series solve
+ *  (nmod_poly_mat_solve_series_dc) used by nmod_algeq_to_diffeq_naive_lift:
+ *  below it the solution is S c mod x^m with S = A^{-1} mod x^s0. Measured
+ *  2026-10-15 at r = d = 32 (scratch kernel_lift, option dc): the lifting
+ *  took 40.5 / 39.9 / 39.2 s for s0 = 32 / 64 / 128, so the choice is not
+ *  critical. */
+#define NMOD_GFUN_SERIES_SOLVE_BASE 64
+
 
 /**
  *    Assume that the degree r in the second variable, say y, is the row dimension - 1 of PT
@@ -303,6 +311,13 @@ void nmod_pseudo_Krylov_naive(nmod_poly_mat_t K, ulong n, const nmod_poly_mat_t 
                                const nmod_poly_mat_t PT, const nmod_poly_t phi1);
 
 slong nmod_algeq_to_diffeq_naive(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
+
+/** Same K as nmod_algeq_to_diffeq_naive (n = r+1 only, FLINT_DOMERR
+ *  otherwise), kernel by lifting (nmod_poly_mat_kernel_vector_lift,
+ *  gfun/series_solve.c) instead of a minimal kernel basis; nz = 1 and the
+ *  operator, primitive and monic on its entry of highest degree, in the
+ *  first column of LT (n x n); 0 if no kernel vector was found. (2026-10-15) */
+slong nmod_algeq_to_diffeq_naive_lift(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
 
 
 /** Independent, Delta-scaled reference construction of the r x n
@@ -683,6 +698,49 @@ void nmod_symprod_pseudo_krylov_description(nmod_poly_mat_t D, nmod_poly_mat_t N
  * nmod_symprod_naive; n >= 2. */
 slong nmod_symprod_recursive(nmod_poly_mat_t LT, const nmod_poly_mat_t L1,
                              const nmod_poly_mat_t L2, const slong n);
+
+
+/* Linear systems over power series, gfun/series_solve.c (2026-10-15).
+ * Generic polynomial-matrix code, kept in gfun for now, named as in
+ * nmod_poly_mat_extra so that it can move there unchanged. */
+
+/** S = A^{-1} mod x^order by Newton iteration from A(0)^{-1}. A is n x n,
+ *  S is n x n (initialised), order >= 1. Returns 0 if A(0) is singular (S
+ *  unchanged), 1 otherwise. S may alias A. Products by
+ *  nmod_poly_mat_multiply, O(n^omega M(order)) operations. */
+int nmod_poly_mat_inv_trunc_newton(nmod_poly_mat_t S, const nmod_poly_mat_t A, slong order);
+
+/** X = A^{-1} B mod x^prec by divide and conquer (Bostan, Chyzak, Ollivier,
+ *  Salvy, Schost, Sedoglavic, SODA 2007, Sec. 3, without the derivative):
+ *  the lower half of the solution, then the upper half with the residual
+ *  as right-hand side, down to the base size s0, where X = S B mod x^m with
+ *  S = A^{-1} mod x^s0 (nmod_poly_mat_inv_trunc_newton). The residuals are
+ *  middle products (FLINT _nmod_poly_mulmid, n^2 k per residual). A is
+ *  n x n, B and X are n x k (X initialised), prec >= 0, s0 >= 1 (clamped
+ *  to [1, prec]). Returns 0 if A(0) is singular (X unchanged), 1 otherwise.
+ *  X may alias A or B. O(n^2 k M(prec) log(prec/s0) + n^omega M(s0))
+ *  operations; memory: A, B, two n x k matrices of length prec and the
+ *  inverse mod x^s0. */
+int nmod_poly_mat_solve_series_dc(nmod_poly_mat_t X, const nmod_poly_mat_t A,
+                                  const nmod_poly_mat_t B, slong prec, slong s0);
+
+/** Generator eta of the right kernel of K (m x (m+1), m >= 1, of rank m, so
+ *  that the kernel has dimension 1), by lifting: a point a (0 first, then
+ *  random) and a column c with (K without column c)(a) invertible; z the
+ *  solution of A z = -K_c mod x^(2B+1) in x - a (A = K without column c,
+ *  nmod_poly_mat_solve_series_dc with base size s0); the denominator q of z
+ *  from a Pade approximant of a random combination of its entries (2 x 1
+ *  approximant basis); eta = (q z, q), checked with K eta = 0. B starts at
+ *  deg_bound (<= 0: deg K) and is doubled on failure up to the Cramer bound
+ *  m deg K, then a few fresh random combinations are tried. eta ((m+1) x 1,
+ *  initialised) is primitive and monic on its entry of highest degree
+ *  (lowest index on a tie). Returns 1 on success; 0 if no (c, a) is found
+ *  (K of rank < m) or no kernel vector is found, eta then unchanged. Las
+ *  Vegas (state). For algeqtodiffeq's naive K, deg_bound = deg K is valid
+ *  (deg eta <= r delta = deg K, [gaillard26, Thm. 7]); a generic K has
+ *  kernel degree about m deg K, reached by the doublings. */
+int nmod_poly_mat_kernel_vector_lift(nmod_poly_mat_t eta, const nmod_poly_mat_t K,
+                                     slong deg_bound, slong s0, flint_rand_t state);
 
 
 #endif // GFUN_H

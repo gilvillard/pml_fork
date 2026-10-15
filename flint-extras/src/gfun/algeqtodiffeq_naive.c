@@ -155,13 +155,16 @@ void nmod_pseudo_Krylov_naive(nmod_poly_mat_t K, ulong n, const nmod_poly_mat_t 
  *  Returns nz, the number of solutions found (0 if none); LT is an n x n
  *  polynomial matrix whose first nz columns are the solutions.
  */
-slong nmod_algeq_to_diffeq_naive(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n)
+/* The polynomial pseudo-Krylov matrix K (r x n, K initialised by the
+ * caller) shared by nmod_algeq_to_diffeq_naive and
+ * nmod_algeq_to_diffeq_naive_lift (factored out 2026-10-15, code
+ * unchanged): setup, phi1 rescaling (state), nmod_pseudo_Krylov_naive, then
+ * column j times phi1^{(n-1)-j}, so that every column has the common
+ * denominator phi1^(n-1). */
+static void
+_nmod_algeq_to_diffeq_naive_matrix(nmod_poly_mat_t K, const nmod_poly_mat_t PT,
+                                   const slong n, flint_rand_t state)
 {
-    if (n < 1)
-        flint_throw(FLINT_DOMERR, "nmod_algeq_to_diffeq_naive: n must be >= 1 "
-                    "(n is the pseudo-Krylov matrix width itself, not extra "
-                    "columns beyond r -- use n=r+1 for one solution)\n");
-
     ulong prime = nmod_poly_mat_modulus(PT);
     slong r = (PT->r) - 1;
 
@@ -169,26 +172,16 @@ slong nmod_algeq_to_diffeq_naive(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, c
     nmod_poly_mat_t iPyT, CT;
     nmod_algeqtodiffeq_setup(Delta, iPyT, CT, PT);
 
-    /* TODO(cleanup): matches the rest of this module's not-yet-fixed
-     * per-call reseeding, see claude-pseudoKrylov/todo.md item 8. */
-    flint_rand_t state;
-    flint_rand_init(state);
-    srand((unsigned int) clock());
-    flint_rand_set_seed(state, rand(), rand());
-
     nmod_poly_t phi1;
     nmod_poly_init(phi1, prime);
     nmod_algeqtodiffeq_rescale_by_phi1(phi1, CT, PT, Delta, state);
-    flint_rand_clear(state);
 
-    nmod_poly_mat_t K;
-    nmod_poly_mat_init(K, r, n, prime);
     nmod_pseudo_Krylov_naive(K, n, CT, PT, phi1);
 
     /* Back to an honest polynomial matrix: K's column j currently
      * represents phi1^j * theta^j(a), so column j needs an extra
      * phi1^{(n-1)-j} to match column n-1's normalization before the
-     * kernel computation below (which needs an ordinary, not
+     * kernel computation (which needs an ordinary, not
      * fraction-free-relative-to-varying-powers, polynomial matrix). */
     nmod_poly_t tpol;
     nmod_poly_init(tpol, prime);
@@ -200,6 +193,35 @@ slong nmod_algeq_to_diffeq_naive(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, c
             nmod_poly_mul(nmod_poly_mat_entry(K, i, j), nmod_poly_mat_entry(K, i, j), tpol);
     }
 
+    nmod_poly_mat_clear(iPyT);
+    nmod_poly_mat_clear(CT);
+    nmod_poly_clear(Delta);
+    nmod_poly_clear(phi1);
+    nmod_poly_clear(tpol);
+}
+
+slong nmod_algeq_to_diffeq_naive(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n)
+{
+    if (n < 1)
+        flint_throw(FLINT_DOMERR, "nmod_algeq_to_diffeq_naive: n must be >= 1 "
+                    "(n is the pseudo-Krylov matrix width itself, not extra "
+                    "columns beyond r -- use n=r+1 for one solution)\n");
+
+    ulong prime = nmod_poly_mat_modulus(PT);
+    slong r = (PT->r) - 1;
+
+    /* TODO(cleanup): matches the rest of this module's not-yet-fixed
+     * per-call reseeding, see claude-pseudoKrylov/todo.md item 8. */
+    flint_rand_t state;
+    flint_rand_init(state);
+    srand((unsigned int) clock());
+    flint_rand_set_seed(state, rand(), rand());
+
+    nmod_poly_mat_t K;
+    nmod_poly_mat_init(K, r, n, prime);
+    _nmod_algeq_to_diffeq_naive_matrix(K, PT, n, state);
+    flint_rand_clear(state);
+
     /* Explicit zero shift, not NULL (which means K's column degrees): for
      * nz > 1 this returns the zero-shift minimal basis of the solutions,
      * the same one as the other drivers. shift is in/out, length ncols(K). */
@@ -210,11 +232,55 @@ slong nmod_algeq_to_diffeq_naive(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, c
     flint_free(shift);
 
     nmod_poly_mat_clear(K);
-    nmod_poly_mat_clear(iPyT);
-    nmod_poly_mat_clear(CT);
-    nmod_poly_clear(Delta);
-    nmod_poly_clear(phi1);
-    nmod_poly_clear(tpol);
 
+    return nz;
+}
+
+
+/** Same K as nmod_algeq_to_diffeq_naive, for n = r+1 only, with its kernel
+ *  computed by lifting instead of a minimal kernel basis
+ *  (nmod_poly_mat_kernel_vector_lift, gfun/series_solve.c: solve of r of
+ *  its columns against the last one by divide and conquer to precision
+ *  2 deg K + 1, Pade, check K eta = 0), with deg_bound = deg K, valid since
+ *  deg eta <= r delta = deg K [gaillard26, Thm. 7], and base size
+ *  NMOD_GFUN_SERIES_SOLVE_BASE. Returns nz = 1 with the operator, primitive
+ *  and monic on its entry of highest degree, in the first column of LT
+ *  (n x n, the other columns zero); 0 if no kernel vector was found (K of
+ *  rank < r). n != r+1 is an error (FLINT_DOMERR): the lifting computes a
+ *  one-dimensional kernel; nmod_algeq_to_diffeq_naive covers the other n.
+ *  (2026-10-15) */
+slong nmod_algeq_to_diffeq_naive_lift(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n)
+{
+    ulong prime = nmod_poly_mat_modulus(PT);
+    slong r = (PT->r) - 1;
+
+    if (n != r + 1)
+        flint_throw(FLINT_DOMERR, "nmod_algeq_to_diffeq_naive_lift: n must be r+1 "
+                    "(the lifting computes a one-dimensional kernel; use "
+                    "nmod_algeq_to_diffeq_naive for other n)\n");
+
+    /* TODO(cleanup): same per-call reseeding as nmod_algeq_to_diffeq_naive,
+     * claude-pseudoKrylov/todo.md item 8. */
+    flint_rand_t state;
+    flint_rand_init(state);
+    srand((unsigned int) clock());
+    flint_rand_set_seed(state, rand(), rand());
+
+    nmod_poly_mat_t K, eta;
+    nmod_poly_mat_init(K, r, n, prime);
+    nmod_poly_mat_init(eta, n, 1, prime);
+    _nmod_algeq_to_diffeq_naive_matrix(K, PT, n, state);
+
+    slong nz = nmod_poly_mat_kernel_vector_lift(eta, K, nmod_poly_mat_degree(K),
+                                                NMOD_GFUN_SERIES_SOLVE_BASE, state) ? 1 : 0;
+
+    nmod_poly_mat_zero(LT);
+    if (nz)
+        for (slong j = 0; j < n; j++)
+            nmod_poly_swap(nmod_poly_mat_entry(LT, j, 0), nmod_poly_mat_entry(eta, j, 0));
+
+    nmod_poly_mat_clear(K);
+    nmod_poly_mat_clear(eta);
+    flint_rand_clear(state);
     return nz;
 }
