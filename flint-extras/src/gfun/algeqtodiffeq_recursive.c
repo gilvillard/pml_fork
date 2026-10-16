@@ -110,6 +110,37 @@
  *  consistency with how this project already treats other construction
  *  failures, e.g. width(T)>1 in the width-1 family).
  */
+/* Rows of a left description (Q, P) by increasing row degree of Q (stable
+ * insertion sort; a row permutation, so still an irreducible reduced
+ * description). Used by nmod_algeqtodiffeq_T_left_description and
+ * nmod_algeqtodiffeq_Tb_left_description. pmbasis returns the rows of degree
+ * ceil(delta/r) first; with that order the first shifted kernel of
+ * nmod_pseudo_Krylov_recursive (shift t = rdeg Q) returns a Q_2 that is
+ * t-reduced but not row reduced when r does not divide delta = deg det Q:
+ * sum rdeg Q_2 - delta = min(delta mod r, (r - 2 delta mod r) mod r),
+ * deg Q_2 = ceil(delta/r)+1. The kernel puts its larger shifted degrees on
+ * the last rows; with Q's high rows last as well, the low-shift columns lie
+ * left of the high pivots, where the weak Popov bound is strict, and Q_2 is
+ * row reduced (observed, r = 2..12, d = 1..12; claude-pseudoKrylov
+ * ongoing-M2Pro.md, 2026-10-16). */
+static void _nmod_description_sort_rows(nmod_poly_mat_t Q, nmod_poly_mat_t P)
+{
+    slong n = Q->r;
+    slong * rd = flint_malloc(n * sizeof(slong));
+    nmod_poly_mat_row_degree(rd, Q, NULL);
+    for (slong i = 1; i < n; i++)
+        for (slong k = i; k > 0 && rd[k - 1] > rd[k]; k--)
+        {
+            FLINT_SWAP(slong, rd[k - 1], rd[k]);
+            for (slong j = 0; j < n; j++)
+            {
+                nmod_poly_swap(nmod_poly_mat_entry(Q, k - 1, j), nmod_poly_mat_entry(Q, k, j));
+                nmod_poly_swap(nmod_poly_mat_entry(P, k - 1, j), nmod_poly_mat_entry(P, k, j));
+            }
+        }
+    flint_free(rd);
+}
+
 void nmod_algeqtodiffeq_T_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P,
                                           const nmod_poly_t phi1,
                                           const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
@@ -189,6 +220,9 @@ void nmod_algeqtodiffeq_T_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P,
         flint_throw(FLINT_ERROR, "nmod_algeqtodiffeq_T_left_description: no complete "
                     "description of degree at most %wd found (target_degree too small?)\n",
                     target_degree);
+
+    /* (c) Rows by increasing degree, see _nmod_description_sort_rows. */
+    _nmod_description_sort_rows(Q, P);
 
     flint_free(shift);
     nmod_poly_mat_clear(CT_phi1);
@@ -422,6 +456,9 @@ void nmod_algeqtodiffeq_Tb_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P
         flint_throw(FLINT_ERROR, "nmod_algeqtodiffeq_Tb_left_description: no complete "
                     "description of degree at most %wd found (target_degree too small?)\n",
                     target_degree);
+
+    /* rows by increasing degree, see _nmod_description_sort_rows */
+    _nmod_description_sort_rows(Q, P);
 
     flint_free(shift);
     nmod_poly_mat_clear(CT_phi1);
