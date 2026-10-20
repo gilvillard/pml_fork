@@ -743,5 +743,182 @@ int nmod_poly_mat_kernel_vector_lift(nmod_poly_mat_t eta, const nmod_poly_mat_t 
                                      slong deg_bound, slong s0, flint_rand_t state);
 
 
+/*------------------------------------------------------------*/
+/* T context (gfun/T_ctx.c, 2026-10-20)                        */
+/*------------------------------------------------------------*/
+
+/** How the generic routines reach the k(x)-linear map T of theta = d/dx + T,
+ *  so that each one is written once for every problem (AlgeqtoDiffeq,
+ *  CTBivRatFun, ...): apply(R, A, D, data) sets R = scale * T(A) for A an
+ *  r x 1 polynomial matrix (scale * T(A) is a polynomial matrix: scale is a
+ *  multiple of the denominator of T); D is the caller's bound on deg R (used
+ *  by the AlgeqtoDiffeq apply, whose geometric evaluation needs it; ignored
+ *  by the CTBivRatFun one); deg_bound bounds degM(T).
+ *  AlgeqtoDiffeq: apply = nmod_apply_T (scale = Delta, or phi1 once C is
+ *  rescaled); CTBivRatFun: apply = nmod_telescoper_apply_T (scale = q_r
+ *  Res_y(q, q_y)). The context only points to its data, which the caller
+ *  keeps alive. */
+typedef struct
+{
+    slong r;
+    void (*apply)(nmod_poly_mat_t R, const nmod_poly_mat_t A, slong D, const void * data);
+    const void * data;
+    const nmod_poly_struct * scale;
+    slong deg_bound;
+} nmod_T_ctx_struct;
+
+/** phi1 = phi1(T), the denominator of T, from one random constant projection z:
+ *  phi1 = scale / gcd(scale, scale * T(z)); exact when T has width <= 1 (see
+ *  nmod_phi1's doc in algeqtodiffeq.c, which this generalizes). phi1
+ *  initialized by the caller; draws from state exactly as nmod_phi1 did;
+ *  bound passed to apply: deg_bound - 1 + NMOD_GFUN_NONPROPER_MARGIN. */
+void nmod_T_ctx_phi1(nmod_poly_t phi1, const nmod_T_ctx_struct * T, flint_rand_t state);
+
+/** phi1 and phi2 of T (2026-10-20, from nmod_phi_T, see its doc in algeqtodiffeq.c):
+ *  phi1 from one random column of scale * T as nmod_T_ctx_phi1, phi2 from a random 2 x 2
+ *  minor (two random columns, two random row combinations), each scale / gcd(., scale);
+ *  deg phi1 == deg phi2 is the width(T) <= 1 check (r >= 3 assumed for phi2, as before).
+ *  Same draws from state as nmod_phi_T; bound passed to apply as nmod_T_ctx_phi1. */
+void nmod_T_ctx_phi_T(nmod_poly_t phi1, nmod_poly_t phi2, const nmod_T_ctx_struct * T,
+                      flint_rand_t state);
+
+/** Rank-one decomposition (2026-10-20, from find_uv, see its doc in
+ *  algeqtodiffeq_width1.c): U (r x 1), V (1 x r, initialized) with U V = phi1 T mod phi1,
+ *  for T of width <= 1: phi1 T built column by column with apply (divided by scale/phi1),
+ *  U = (phi1 T) z, V = w (phi1 T) / (w U) mod phi1, z, w random constant. Same draws from
+ *  state as find_uv; bound passed to apply: max(deg_bound, deg scale) - 1 + margin. */
+void nmod_T_ctx_find_uv(nmod_poly_mat_t U, nmod_poly_mat_t V, const nmod_poly_t phi1,
+                        const nmod_T_ctx_struct * T, flint_rand_t state);
+
+/** One step of Proposition 3.2's recurrence (2026-10-20, from nmod_width1_recurrence_step,
+ *  algeqtodiffeq_width1.c): beta_next = -(V . N_prev) mod phi1, N_next = (phi1 theta(N_prev)
+ *  + beta_next U) / phi1, phi1 T(N_prev) = (scale T(N_prev)) / (scale / phi1); D is the
+ *  bound passed to apply. N_next, beta_next initialized; N_prev must not alias N_next. */
+void _nmod_T_ctx_width1_recurrence_step(nmod_poly_mat_t N_next, nmod_poly_t beta_next,
+                                        const nmod_poly_mat_t N_prev, const nmod_poly_mat_t U,
+                                        const nmod_poly_mat_t V, const nmod_poly_t phi1,
+                                        const nmod_T_ctx_struct * T, slong D);
+
+/** Triangular description from a rank-one pair (2026-10-20, from nmod_width1_description,
+ *  see its doc in algeqtodiffeq_width1.c): NN (r x n), DD (n x n, zero-initialized, upper
+ *  triangular) with sum_{j <= i} DD[j,i] q_j = NN_i, q_i = theta^(i-1)(N_ini / alpha).
+ *  Bound passed to apply: max(deg_bound, deg scale) - 1 + deg phi1 + margin. */
+void nmod_T_ctx_width1_description(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong n,
+                                   const nmod_poly_mat_t U, const nmod_poly_mat_t V,
+                                   const nmod_poly_t phi1, const nmod_T_ctx_struct * T,
+                                   const nmod_poly_t alpha, const nmod_poly_mat_t N_ini);
+
+/** Core of Algorithm 4 (PseudoKrylovWidth1) on a T context (2026-10-20, from
+ *  _nmod_algeq_to_diffeq_width1, see its doc in algeqtodiffeq_width1.c): given phi1 (and
+ *  width(T) <= 1 checked by the caller), the rank-one pair (nmod_T_ctx_find_uv), the
+ *  descriptions (N, D) of Q and (F, A) of the seed a (Lemma 3.7's step), the block matrix
+ *  P of eq. (19) and its zero-shift nullspace; Y ((m+1) x (m+1), initialized) gets a minimal
+ *  basis of the solutions eta of sum_{i <= m} eta_i theta^i(a) = 0 in its first nz columns;
+ *  returns nz. Draws from state (find_uv). */
+slong _nmod_T_ctx_width1_core(nmod_poly_mat_t Y, const nmod_poly_mat_t a, const ulong m,
+                              const nmod_T_ctx_struct * T, const nmod_poly_t phi1,
+                              flint_rand_t state);
+
+/** Fraction-free pseudo-Krylov matrix (2026-10-20, from nmod_pseudo_Krylov_naive):
+ *  K (r x n, initialized) with column k = phi1^k theta^k(a), a the r x 1 seed,
+ *  phi1 a denominator of T dividing T->scale:
+ *    K_{k+1} = phi1 K_k' - k phi1' K_k + phi1 T(K_k),
+ *  phi1 T(K_k) = (scale T(K_k)) / (scale / phi1) (exact; nothing to divide when
+ *  scale = phi1). Bound passed to apply: k deg phi1 + deg a + deg scale +
+ *  NMOD_GFUN_NONPROPER_MARGIN. n >= 1. */
+void nmod_T_ctx_pseudo_Krylov_naive(nmod_poly_mat_t K, ulong n, const nmod_T_ctx_struct * T,
+                                    const nmod_poly_mat_t a, const nmod_poly_t phi1);
+
+/** Left description T = Q^{-1} P (Q, P r x r, initialized), from a truncated approximant
+ *  basis of [-phi1 T; phi1 I] (2026-10-20, from nmod_algeqtodiffeq_T_left_description,
+ *  see its doc in algeqtodiffeq_recursive.c): phi1 T built column by column with apply,
+ *  degree target from max(deg phi1, deg_bound) over the number of nonzero columns,
+ *  exactness check with doubling on failure (throws after 4 x the bound), rows sorted
+ *  by increasing degree (_nmod_poly_mat_description_sort_rows). phi1 must divide scale. */
+void nmod_T_ctx_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P,
+                                 const nmod_T_ctx_struct * T, const nmod_poly_t phi1);
+
+/** Rows of a left description (Q, P) by increasing row degree of Q (stable); see the
+ *  doc in T_ctx.c (why the order matters for the first shifted kernel). */
+void _nmod_poly_mat_description_sort_rows(nmod_poly_mat_t Q, nmod_poly_mat_t P);
+
+/** T context for AlgeqtoDiffeq: apply = nmod_apply_T(R, A, CT, PT, D), with the
+ *  given scale (Delta for the CT of nmod_algeqtodiffeq_setup, phi1 once CT is
+ *  rescaled), deg_bound = (2r-1)d. data is filled here and must outlive T. */
+typedef struct
+{
+    const nmod_poly_mat_struct * CT;
+    const nmod_poly_mat_struct * PT;
+} nmod_algeqtodiffeq_T_data_struct;
+
+void nmod_algeqtodiffeq_T_ctx_init(nmod_T_ctx_struct * T, nmod_algeqtodiffeq_T_data_struct * data,
+                                   const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
+                                   const nmod_poly_t scale);
+
+
+/*------------------------------------------------------------*/
+/* Creative telescoping for bivariate rational functions:     */
+/* telescopers (gfun/telescoper.c, telescoper_naive.c)         */
+/*------------------------------------------------------------*/
+
+/** f = p/q, q square-free in y, r = deg_y q, QT the (r+1) x 1 matrix of the
+ *  y-coefficients of q; A = k(x)[y]_{<r}. T(a) = -herm(q_x a / q^2) =
+ *  -(U + d_y V) with U q + V q_y = q_x a, deg_y U, V < r (pk_main.tex
+ *  lem:real_T_hermite). Everything is scaled by Delta = q_r Res_y(q, q_y)
+ *  = +-det of the extended Sylvester map (degree <= 2rd).
+ *
+ *  nmod_telescoper_setup: Delta and CT = Delta (q_x/q_y mod q) (r x 1),
+ *  both initialized here.
+ *  nmod_telescoper_hermite_UV: U' = Delta U, V' = Delta V (r x 1, initialized
+ *  by the caller) for a in A (AT r x 1); throws if the division by q is not exact.
+ *  nmod_telescoper_apply_T: RT = Delta T(a) = -(U' + d_y V'). */
+void nmod_telescoper_setup(nmod_poly_t Delta, nmod_poly_mat_t CT, const nmod_poly_mat_t QT);
+
+void nmod_telescoper_hermite_UV(nmod_poly_mat_t UT, nmod_poly_mat_t VT, const nmod_poly_mat_t AT,
+                                 const nmod_poly_mat_t CT, const nmod_poly_mat_t QT,
+                                 const nmod_poly_t Delta);
+
+void nmod_telescoper_apply_T(nmod_poly_mat_t RT, const nmod_poly_mat_t AT, const nmod_poly_mat_t CT,
+                              const nmod_poly_mat_t QT, const nmod_poly_t Delta);
+
+/** T context for the Hermite T (2026-10-20): apply = nmod_telescoper_apply_T,
+ *  scale = Delta = q_r Res_y(q, q_y), deg_bound = 2rd (lem:real_T_hermite).
+ *  data is filled here and must outlive T; QT, CT, Delta as returned by
+ *  nmod_telescoper_setup, also kept alive by the caller. */
+typedef struct
+{
+    const nmod_poly_mat_struct * QT;
+    const nmod_poly_mat_struct * CT;
+    const nmod_poly_struct * Delta;
+} nmod_telescoper_T_data_struct;
+
+void nmod_telescoper_T_ctx_init(nmod_T_ctx_struct * T, nmod_telescoper_T_data_struct * data,
+                                 const nmod_poly_mat_t QT, const nmod_poly_mat_t CT,
+                                 const nmod_poly_t Delta);
+
+/** Telescoper of f = p/q by K + lifting (2026-10-20): PNT the r x 1 y-coefficients of p
+ *  (deg_y p < r = deg_y q), QT those of q ((r+1) x 1, q square-free in y); n = r+1.
+ *  K = [phi1^j theta^j(p)] for the Hermite T (generic naive K), padded, kernel vector by
+ *  nmod_poly_mat_kernel_vector_lift. Returns nz (1, or 0); LT (n x n) gets the telescoper
+ *  sum_j LT[j][0] d_x^j in column 0 (primitive, monic on its entry of highest degree). */
+slong nmod_telescoper_naive_lift(nmod_poly_mat_t LT, const nmod_poly_mat_t PNT,
+                                  const nmod_poly_mat_t QT, const slong n);
+
+/** Telescopers of f = p/q by PseudoKrylovLeftDesc (gfun/telescoper_recursive.c, 2026-10-20):
+ *  description of the Hermite T (nmod_T_ctx_left_description), recursion
+ *  nmod_pseudo_Krylov_recursive with seed p, zero-shift kernel of [D p | N]. n >= 2 (order
+ *  <= n-1); returns nz, the first nz columns of LT (n x n) being a minimal basis of the
+ *  telescopers of order <= n-1 (generic n = r+1: nz = 1, the minimal telescoper). */
+slong nmod_telescoper_recursive(nmod_poly_mat_t LT, const nmod_poly_mat_t PNT,
+                                const nmod_poly_mat_t QT, const slong n);
+
+/** Telescopers of f = p/q by PseudoKrylovWidth1 (gfun/telescoper_width1.c, 2026-10-20):
+ *  width check (nmod_T_ctx_phi_T, throws if width(T) > 1), then _nmod_T_ctx_width1_core with
+ *  seed p. Same conventions as nmod_telescoper_recursive (n >= 2, minimal basis in the
+ *  first nz columns of LT). */
+slong nmod_telescoper_width1(nmod_poly_mat_t LT, const nmod_poly_mat_t PNT,
+                             const nmod_poly_mat_t QT, const slong n);
+
+
 #endif // GFUN_H
 

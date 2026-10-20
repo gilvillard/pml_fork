@@ -105,15 +105,6 @@ void find_uv(nmod_poly_mat_t U, nmod_poly_mat_t V, const nmod_poly_t phi1,
 {
     ulong prime = nmod_poly_mat_modulus(PT);
     slong r = (PT->r) - 1;
-    slong d = nmod_poly_mat_degree(PT);
-    /* Margin for the same reason as nmod_width1_description's D below: the
-     * properness-derived bound is exactly the degree phi1*T(e_j) reaches here
-     * (the operands are constant basis vectors), so it carries no cushion for
-     * an input where T is not exactly proper -- and nmod_apply_T aliases
-     * silently rather than raising. Unlike the description loop's bound, this
-     * one's headroom has not actually been measured; added 2026-09-18 on the
-     * same reasoning, per the user. */
-    slong D = nmod_gfun_delta_T_degree_bound(r, d) + NMOD_GFUN_NONPROPER_MARGIN;
 
     /* Local, phi1-scaled working copy of CT -- see the optimization note
      * above. CT itself (the parameter) is not modified. */
@@ -123,68 +114,23 @@ void find_uv(nmod_poly_mat_t U, nmod_poly_mat_t V, const nmod_poly_t phi1,
         nmod_poly_set(nmod_poly_mat_entry(CT_phi1, i, 0), nmod_poly_mat_entry(CT, i, 0));
     nmod_algeqtodiffeq_rescale_CT_by_phi1(CT_phi1, PT, Delta, phi1);
 
-    /* Random constant projections z (column) and w (row) -- see
-     * nmod_phi1's doc for the same n_randbits-over-the-word-size
-     * reasoning. */
-    nmod_poly_mat_t z, w;
-    nmod_poly_mat_init(z, r, 1, prime);
-    nmod_poly_mat_init(w, 1, r, prime);
-    for (slong i = 0; i < r; i++)
-    {
-        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(z, i, 0), 0, n_randbits(state, FLINT_BITS - 2));
-        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(w, 0, i), 0, n_randbits(state, FLINT_BITS - 2));
-    }
-
-    /* T's matrix (phi1-scaled), column by column; column 0 stays zero. */
-    nmod_poly_mat_t Tmat, Yk, col;
-    nmod_poly_mat_init(Tmat, r, r, prime);
-    nmod_poly_mat_init(Yk, r, 1, prime);
-    nmod_poly_mat_init(col, r, 1, prime);
-
-    for (slong i = 0; i < r; i++)
-        nmod_poly_zero(nmod_poly_mat_entry(Tmat, i, 0));
-
-    for (slong j = 1; j < r; j++)
-    {
-        for (slong i = 0; i < r; i++)
-            nmod_poly_zero(nmod_poly_mat_entry(Yk, i, 0));
-        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(Yk, j, 0), 0, 1);
-
-        nmod_apply_T(col, Yk, CT_phi1, PT, D);
-
-        for (slong i = 0; i < r; i++)
-            nmod_poly_set(nmod_poly_mat_entry(Tmat, i, j), nmod_poly_mat_entry(col, i, 0));
-    }
-
-    /* U = T*z, V = w*T (Lemma 3.3's u, v^T). */
-    nmod_poly_mat_multiply(U, Tmat, z);
-    nmod_poly_mat_multiply(V, w, Tmat);
-
-    /* e = w*T*z = w*U; normalize V := V * e^{-1} mod phi1, so U*V already
-     * equals T mod phi1 with no leftover e for the caller. */
-    nmod_poly_mat_t e;
-    nmod_poly_mat_init(e, 1, 1, prime);
-    nmod_poly_mat_multiply(e, w, U);
-
-    nmod_poly_t einv;
-    nmod_poly_init(einv, prime);
-    nmod_poly_set(einv, nmod_poly_mat_entry(e, 0, 0));
-    nmod_poly_invmod(einv, einv, phi1);
-
-    for (slong i = 0; i < r; i++)
-    {
-        nmod_poly_mul(nmod_poly_mat_entry(V, 0, i), nmod_poly_mat_entry(V, 0, i), einv);
-        nmod_poly_rem(nmod_poly_mat_entry(V, 0, i), nmod_poly_mat_entry(V, 0, i), phi1);
-    }
+    /* 2026-10-20: the computation itself is the generic nmod_T_ctx_find_uv (T_ctx.c),
+     * on an AlgeqtoDiffeq context with scale = phi1; same draws, same result (column 0
+     * of phi1 T, zero since T(1) = 0, is now computed rather than set). Its bound for
+     * apply, (2r-1)d - 1 + margin, is this function's former
+     * nmod_gfun_delta_T_degree_bound(r, d) + margin. Margin for the same reason as
+     * nmod_width1_description's D below: the properness-derived bound is exactly the
+     * degree phi1*T(e_j) reaches here (the operands are constant basis vectors), so it
+     * carries no cushion for an input where T is not exactly proper -- and
+     * nmod_apply_T aliases silently rather than raising. Unlike the description
+     * loop's bound, this one's headroom has not actually been measured; added
+     * 2026-09-18 on the same reasoning, per the user. */
+    nmod_T_ctx_struct T;
+    nmod_algeqtodiffeq_T_data_struct dat;
+    nmod_algeqtodiffeq_T_ctx_init(&T, &dat, CT_phi1, PT, phi1);
+    nmod_T_ctx_find_uv(U, V, phi1, &T, state);
 
     nmod_poly_mat_clear(CT_phi1);
-    nmod_poly_mat_clear(z);
-    nmod_poly_mat_clear(w);
-    nmod_poly_mat_clear(Tmat);
-    nmod_poly_mat_clear(Yk);
-    nmod_poly_mat_clear(col);
-    nmod_poly_mat_clear(e);
-    nmod_poly_clear(einv);
 }
 
 
@@ -208,46 +154,8 @@ void find_uv(nmod_poly_mat_t U, nmod_poly_mat_t V, const nmod_poly_t phi1,
  *  function reads N_prev entries after starting to write N_next in the
  *  same loop, so pass distinct matrices).
  */
-static void
-nmod_width1_recurrence_step(nmod_poly_mat_t N_next, nmod_poly_t beta_next,
-                             const nmod_poly_mat_t N_prev,
-                             const nmod_poly_mat_t U, const nmod_poly_mat_t V,
-                             const nmod_poly_t phi1, const nmod_poly_mat_t CT_phi1,
-                             const nmod_poly_mat_t PT, slong Dbound)
-{
-    ulong prime = nmod_poly_mat_modulus(PT);
-    slong r = (PT->r) - 1;
-
-    nmod_poly_t tpol;
-    nmod_poly_init(tpol, prime);
-
-    nmod_poly_mul(beta_next, nmod_poly_mat_entry(V, 0, 0), nmod_poly_mat_entry(N_prev, 0, 0));
-    for (slong i = 1; i < r; i++)
-    {
-        nmod_poly_mul(tpol, nmod_poly_mat_entry(V, 0, i), nmod_poly_mat_entry(N_prev, i, 0));
-        nmod_poly_add(beta_next, beta_next, tpol);
-    }
-    nmod_poly_rem(beta_next, beta_next, phi1);
-    nmod_poly_neg(beta_next, beta_next);
-
-    nmod_poly_mat_t temp;
-    nmod_poly_mat_init(temp, r, 1, prime);
-    nmod_apply_T(temp, N_prev, CT_phi1, PT, Dbound);
-
-    for (slong i = 0; i < r; i++)
-    {
-        nmod_poly_derivative(tpol, nmod_poly_mat_entry(N_prev, i, 0));
-        nmod_poly_mul(tpol, tpol, phi1);
-        nmod_poly_add(tpol, tpol, nmod_poly_mat_entry(temp, i, 0));
-
-        nmod_poly_mul(nmod_poly_mat_entry(N_next, i, 0), beta_next, nmod_poly_mat_entry(U, i, 0));
-        nmod_poly_add(nmod_poly_mat_entry(N_next, i, 0), nmod_poly_mat_entry(N_next, i, 0), tpol);
-        nmod_poly_div(nmod_poly_mat_entry(N_next, i, 0), nmod_poly_mat_entry(N_next, i, 0), phi1);
-    }
-
-    nmod_poly_mat_clear(temp);
-    nmod_poly_clear(tpol);
-}
+/* (2026-10-20: the recurrence step itself is now the generic
+ * _nmod_T_ctx_width1_recurrence_step, T_ctx.c / gfun.h; the doc above still describes it.) */
 
 
 /** Triangular description of a pseudo-Krylov matrix built from a rank-one
@@ -307,8 +215,6 @@ void nmod_width1_description(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong
 {
     ulong prime = nmod_poly_mat_modulus(PT);
     slong r = (PT->r) - 1;
-    slong d = nmod_poly_mat_degree(PT);
-    slong deg_phi1 = nmod_poly_degree(phi1);
 
     /* Local, phi1-scaled working copy of CT -- see the optimization note
      * above. CT itself (the parameter) is not modified. */
@@ -318,66 +224,26 @@ void nmod_width1_description(nmod_poly_mat_t NN, nmod_poly_mat_t DD, const ulong
         nmod_poly_set(nmod_poly_mat_entry(CT_phi1, i, 0), nmod_poly_mat_entry(CT, i, 0));
     nmod_algeqtodiffeq_rescale_CT_by_phi1(CT_phi1, PT, Delta, phi1);
 
-    /* Bound for phi1*T(N_{j-1}) via nmod_apply_T. The properness-derived part,
-     * (2*r-1)*d - 1 + deg(phi1) (= 2*deg(phi1) - 1 generically), is exactly
+    /* 2026-10-20: the computation itself is the generic nmod_T_ctx_width1_description
+     * (T_ctx.c) on an AlgeqtoDiffeq context with scale = phi1; same result. Its bound
+     * for apply, (2r-1)d - 1 + deg(phi1) + margin, is this function's former
+     * nmod_gfun_delta_T_degree_bound(r, d) + deg(phi1) + margin: the properness-derived
+     * part, (2*r-1)*d - 1 + deg(phi1) (= 2*deg(phi1) - 1 generically), is exactly
      * algos.pdf's own ceiling for this quantity (Prop. 3.2's proof:
-     * deg(Delta*theta(N_i)) < 2*delta) -- and it is TIGHT, not conservative:
-     * measured slack is a constant 3 coefficients at r,d = 8,5 / 12,8 / 20,12
-     * (claude-pseudoKrylov/experiments/bench-applyT-breakdown.c, 2026-09-18),
-     * i.e. 98-99.7% of D is actually used, more so as sizes grow. Since
-     * nmod_apply_T's geometric evaluation has NO bounds checking -- exceeding
-     * D aliases silently into a wrong answer rather than raising (see
-     * NMOD_GFUN_NONPROPER_MARGIN's own doc in gfun.h) -- those 3 coefficients
-     * are no cushion at all for an input where T is not exactly proper, which
-     * is what the margin covers. */
-    slong D = nmod_gfun_delta_T_degree_bound(r, d) + deg_phi1 + NMOD_GFUN_NONPROPER_MARGIN;
-
-    /* Column 0 (paper's N_1, D's beta_{1,1}): the base case, given
-     * directly rather than computed. */
-    nmod_poly_set(nmod_poly_mat_entry(DD, 0, 0), alpha);
-    for (slong i = 0; i < r; i++)
-        nmod_poly_set(nmod_poly_mat_entry(NN, i, 0), nmod_poly_mat_entry(N_ini, i, 0));
-
-    nmod_poly_mat_t N_prev, N_next;
-    nmod_poly_mat_init(N_prev, r, 1, prime);
-    nmod_poly_mat_init(N_next, r, 1, prime);
-
-    nmod_poly_t b, tpol;
-    nmod_poly_init(b, prime);
-    nmod_poly_init(tpol, prime);
-
-    for (slong j = 1; j < (slong) n; j++)
-    {
-        for (slong i = 0; i < r; i++)
-            nmod_poly_set(nmod_poly_mat_entry(N_prev, i, 0), nmod_poly_mat_entry(NN, i, j - 1));
-
-        /* b = beta_{.,j+1}'s "-b_{j+1}" term (Proposition 3.2), N_next =
-         * N_j -- see nmod_width1_recurrence_step's own doc for the exact
-         * formula (CT_phi1 already phi1-scaled, so no post-division by
-         * Delta/phi1 needed here, unlike the draft). */
-        nmod_width1_recurrence_step(N_next, b, N_prev, U, V, phi1, CT_phi1, PT, D);
-
-        for (slong i = 0; i < r; i++)
-            nmod_poly_set(nmod_poly_mat_entry(NN, i, j), nmod_poly_mat_entry(N_next, i, 0));
-
-        /* D's column j (paper's beta_{.,j+1}): beta_{1,j+1} = b_{j+1} (as
-         * negated above) + d/dx(beta_{1,j}); beta_{i+1,j+1} =
-         * beta_{i,j} + d/dx(beta_{i+1,j}) for 1 <= i <= j (sigma = id). */
-        nmod_poly_derivative(tpol, nmod_poly_mat_entry(DD, 0, j - 1));
-        nmod_poly_add(nmod_poly_mat_entry(DD, 0, j), b, tpol);
-
-        for (slong i = 1; i <= j; i++)
-        {
-            nmod_poly_derivative(tpol, nmod_poly_mat_entry(DD, i, j - 1));
-            nmod_poly_add(nmod_poly_mat_entry(DD, i, j), nmod_poly_mat_entry(DD, i - 1, j - 1), tpol);
-        }
-    }
+     * deg(Delta*theta(N_i)) < 2*delta) -- and it is TIGHT, not conservative: measured
+     * slack is a constant 3 coefficients at r,d = 8,5 / 12,8 / 20,12
+     * (claude-pseudoKrylov/experiments/bench-applyT-breakdown.c, 2026-09-18), i.e.
+     * 98-99.7% of D is actually used, more so as sizes grow. Since nmod_apply_T's
+     * geometric evaluation has NO bounds checking -- exceeding D aliases silently into
+     * a wrong answer rather than raising (see NMOD_GFUN_NONPROPER_MARGIN's own doc in
+     * gfun.h) -- those 3 coefficients are no cushion at all for an input where T is
+     * not exactly proper, which is what the margin covers. */
+    nmod_T_ctx_struct T;
+    nmod_algeqtodiffeq_T_data_struct dat;
+    nmod_algeqtodiffeq_T_ctx_init(&T, &dat, CT_phi1, PT, phi1);
+    nmod_T_ctx_width1_description(NN, DD, n, U, V, phi1, &T, alpha, N_ini);
 
     nmod_poly_mat_clear(CT_phi1);
-    nmod_poly_mat_clear(N_prev);
-    nmod_poly_mat_clear(N_next);
-    nmod_poly_clear(b);
-    nmod_poly_clear(tpol);
 }
 
 
@@ -425,7 +291,6 @@ slong _nmod_algeq_to_diffeq_width1(nmod_poly_mat_t Y, const nmod_poly_mat_t a, c
 
     ulong prime = nmod_poly_mat_modulus(PT);
     slong r = (PT->r) - 1;
-    slong d = nmod_poly_mat_degree(PT);
 
     /* Phase 1: rank-one decomposition (u,v), width check. r < 3 is
      * special-cased: T is then r x r with column 0 forced to zero
@@ -455,113 +320,24 @@ slong _nmod_algeq_to_diffeq_width1(nmod_poly_mat_t Y, const nmod_poly_mat_t a, c
                         nmod_poly_degree(phi1), nmod_poly_degree(phi2));
     }
 
-    nmod_poly_mat_t U, V;
-    nmod_poly_mat_init(U, r, 1, prime);
-    nmod_poly_mat_init(V, 1, r, prime);
-    find_uv(U, V, phi1, CT, PT, Delta, state);
-
+    /* 2026-10-20: the rest (rank-one pair, the two width-1 descriptions with Lemma 3.7's
+     * step for the seed, the block matrix P of eq. (19) and its nullspace) is the generic
+     * _nmod_T_ctx_width1_core (T_ctx.c), on an AlgeqtoDiffeq context with scale = phi1;
+     * same draws, bounds and result. */
     nmod_poly_mat_t CT_phi1;
     nmod_poly_mat_init(CT_phi1, r, 1, prime);
     for (slong i = 0; i < r; i++)
         nmod_poly_set(nmod_poly_mat_entry(CT_phi1, i, 0), nmod_poly_mat_entry(CT, i, 0));
     nmod_algeqtodiffeq_rescale_CT_by_phi1(CT_phi1, PT, Delta, phi1);
 
-    slong D = nmod_gfun_delta_T_degree_bound(r, d) + nmod_poly_degree(phi1);
+    nmod_T_ctx_struct T;
+    nmod_algeqtodiffeq_T_data_struct dat;
+    nmod_algeqtodiffeq_T_ctx_init(&T, &dat, CT_phi1, PT, phi1);
+    slong nz = _nmod_T_ctx_width1_core(Y, a, m, &T, phi1, state);
 
-    /* Phase 2: realisations (N,D) of Q (Proposition 3.2) and (F,A) of a
-     * (Proposition 3.3, via Lemma 3.7's beta/f). */
-    nmod_poly_mat_t N, D_mat;
-    nmod_poly_mat_init(N, r, m, prime);
-    nmod_poly_mat_init(D_mat, m, m, prime);
-    nmod_width1_description(N, D_mat, m, U, V, phi1, CT, PT, phi1, U, Delta);
-
-    nmod_poly_t beta;
-    nmod_poly_init(beta, prime);
-    nmod_poly_mat_t f;
-    nmod_poly_mat_init(f, r, 1, prime);
-    nmod_width1_recurrence_step(f, beta, a, U, V, phi1, CT_phi1, PT, D);
-
-    nmod_poly_mat_t F, A;
-    nmod_poly_mat_init(F, r, m, prime);
-    nmod_poly_mat_init(A, m, m, prime);
-    nmod_width1_description(F, A, m, U, V, phi1, CT, PT, beta, f, Delta);
-
-    /* Phase 3: augmented block matrix P (eq. 19):
-     *   Dbar=Diag(1,D), Nbar=[0 N], Abar=Diag(1,A), Fbar=[a F]
-     *   P = [[Dbar, Abar], [Nbar, Fbar]], size (r + n1) x 2*n1, n1 = m+1.
-     * P is freshly initialized (zero), so only the nonzero entries below
-     * need to be set explicitly. */
-    slong n1 = m + 1;
-    nmod_poly_mat_t P;
-    nmod_poly_mat_init(P, r + n1, 2 * n1, prime);
-
-    nmod_poly_one(nmod_poly_mat_entry(P, 0, 0));   /* Dbar[0][0] = 1 */
-    nmod_poly_one(nmod_poly_mat_entry(P, 0, n1));  /* Abar[0][0] = 1 */
-    for (slong i = 0; i < r; i++)
-        nmod_poly_set(nmod_poly_mat_entry(P, n1 + i, n1), nmod_poly_mat_entry(a, i, 0)); /* Fbar[:,0] = a */
-    /* Nbar[:,0] stays zero (P's own fresh zero-init). */
-
-    for (slong i = 0; i < (slong) m; i++)
-        for (slong j = 0; j < (slong) m; j++)
-        {
-            nmod_poly_set(nmod_poly_mat_entry(P, 1 + i, 1 + j), nmod_poly_mat_entry(D_mat, i, j));
-            nmod_poly_set(nmod_poly_mat_entry(P, 1 + i, n1 + 1 + j), nmod_poly_mat_entry(A, i, j));
-        }
-    for (slong i = 0; i < r; i++)
-        for (slong j = 0; j < (slong) m; j++)
-        {
-            nmod_poly_set(nmod_poly_mat_entry(P, n1 + i, 1 + j), nmod_poly_mat_entry(N, i, j));
-            nmod_poly_set(nmod_poly_mat_entry(P, n1 + i, n1 + 1 + j), nmod_poly_mat_entry(F, i, j));
-        }
-
-    /* Nullspace of P: W = [Z^T Y^T]^T (Lemma 3.8), Y = W's last n1 rows.
-     *
-     * `shift` is an explicit ZEROED array, not NULL (changed 2026-09-18, per
-     * the user, measured by claude-pseudoKrylov/experiments/
-     * bench-width1-kernel-shift.c). NULL does not mean "zero shift": per
-     * nmod_poly_mat_kernel.h it means weak Popov with respect to pmat's own
-     * COLUMN degrees here (COL_UPPER = right kernel), and P's column degrees
-     * run from 0 (its first column, essentially the lone 1 entry) up to
-     * deg(phi1) -- a strongly non-uniform shift, the kind that inflates this
-     * computation. Uniform zero measured 5-8% faster on the identical P at
-     * r,d = 8,5 / 12,8 / 16,10, stable across trials.
-     *
-     * Same answer either way, and not merely "a different valid basis":
-     * generically nz = 1, so the kernel is one-dimensional and its basis
-     * vector is unique up to a scalar whatever the shift -- verified equal
-     * (after normalization) on every trial.
-     *
-     * Length is 2*n1 = ncols(P), the COL_UPPER convention (the doc's
-     * "number of rows" wording describes the left-kernel orientation).
-     * shift is in/out -- the call overwrites it with the output shifted
-     * degrees -- so it is freshly zeroed here and not reused as an input. */
-    slong *pivind = flint_malloc(2 * n1 * sizeof(slong));
-    slong *shift = flint_malloc(2 * n1 * sizeof(slong));
-    for (slong i = 0; i < 2 * n1; i++)
-        shift[i] = 0;
-    nmod_poly_mat_t W;
-    nmod_poly_mat_init(W, 2 * n1, 2 * n1, prime);
-    slong nz = nmod_poly_mat_kernel(W, pivind, shift, P, ORD_WEAK_POPOV, COL_UPPER);
-    flint_free(pivind);
-    flint_free(shift);
-
-    for (slong i = 0; i < n1; i++)
-        for (slong j = 0; j < n1; j++)
-            nmod_poly_set(nmod_poly_mat_entry(Y, i, j), nmod_poly_mat_entry(W, n1 + i, j));
-
-    nmod_poly_mat_clear(U);
-    nmod_poly_mat_clear(V);
     nmod_poly_mat_clear(CT_phi1);
-    nmod_poly_mat_clear(N);
-    nmod_poly_mat_clear(D_mat);
-    nmod_poly_mat_clear(f);
-    nmod_poly_mat_clear(F);
-    nmod_poly_mat_clear(A);
-    nmod_poly_mat_clear(P);
-    nmod_poly_mat_clear(W);
     nmod_poly_clear(phi1);
     nmod_poly_clear(phi2);
-    nmod_poly_clear(beta);
 
     return nz;
 }

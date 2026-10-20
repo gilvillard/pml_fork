@@ -116,37 +116,6 @@
  *  consistency with how this project already treats other construction
  *  failures, e.g. width(T)>1 in the width-1 family).
  */
-/* Rows of a left description (Q, P) by increasing row degree of Q (stable
- * insertion sort; a row permutation, so still an irreducible reduced
- * description). Used by nmod_algeqtodiffeq_T_left_description and
- * nmod_algeqtodiffeq_Tb_left_description. pmbasis returns the rows of degree
- * ceil(delta/r) first; with that order the first shifted kernel of
- * nmod_pseudo_Krylov_recursive (shift t = rdeg Q) returns a Q_2 that is
- * t-reduced but not row reduced when r does not divide delta = deg det Q:
- * sum rdeg Q_2 - delta = min(delta mod r, (r - 2 delta mod r) mod r),
- * deg Q_2 = ceil(delta/r)+1. The kernel puts its larger shifted degrees on
- * the last rows; with Q's high rows last as well, the low-shift columns lie
- * left of the high pivots, where the weak Popov bound is strict, and Q_2 is
- * row reduced (observed, r = 2..12, d = 1..12; claude-pseudoKrylov
- * ongoing-M2Pro.md, 2026-10-16). */
-static void _nmod_description_sort_rows(nmod_poly_mat_t Q, nmod_poly_mat_t P)
-{
-    slong n = Q->r;
-    slong * rd = flint_malloc(n * sizeof(slong));
-    nmod_poly_mat_row_degree(rd, Q, NULL);
-    for (slong i = 1; i < n; i++)
-        for (slong k = i; k > 0 && rd[k - 1] > rd[k]; k--)
-        {
-            FLINT_SWAP(slong, rd[k - 1], rd[k]);
-            for (slong j = 0; j < n; j++)
-            {
-                nmod_poly_swap(nmod_poly_mat_entry(Q, k - 1, j), nmod_poly_mat_entry(Q, k, j));
-                nmod_poly_swap(nmod_poly_mat_entry(P, k - 1, j), nmod_poly_mat_entry(P, k, j));
-            }
-        }
-    flint_free(rd);
-}
-
 void nmod_algeqtodiffeq_T_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P,
                                           const nmod_poly_t phi1,
                                           const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
@@ -155,131 +124,25 @@ void nmod_algeqtodiffeq_T_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P,
     ulong prime = nmod_poly_mat_modulus(PT);
     slong r = (PT->r) - 1;
 
-    /* (a) T's explicit r x r matrix, phi1-scaled. */
+    /* CT rescaled to phi1, so that the context's apply gives phi1 T directly */
     nmod_poly_mat_t CT_phi1;
     nmod_poly_mat_init(CT_phi1, r, 1, prime);
     for (slong i = 0; i < r; i++)
         nmod_poly_set(nmod_poly_mat_entry(CT_phi1, i, 0), nmod_poly_mat_entry(CT, i, 0));
     nmod_algeqtodiffeq_rescale_CT_by_phi1(CT_phi1, PT, Delta, phi1);
 
-    slong d = nmod_poly_mat_degree(PT);
-    slong Dbound = nmod_gfun_delta_T_degree_bound(r, d) + nmod_poly_degree(phi1);
+    /* 2026-10-20: (a) T's phi1-scaled matrix, (b) the approximant-basis description
+     * with the exactness check, (c) the row sort are the generic
+     * nmod_T_ctx_left_description (T_ctx.c), on an AlgeqtoDiffeq context with
+     * scale = phi1 (CT_phi1); same steps and result as before (column 0 of phi1 T,
+     * zero since T(1) = 0, is now computed rather than set; the (r-1) of the target
+     * is the number of nonzero columns). */
+    nmod_T_ctx_struct T;
+    nmod_algeqtodiffeq_T_data_struct dat;
+    nmod_algeqtodiffeq_T_ctx_init(&T, &dat, CT_phi1, PT, phi1);
+    nmod_T_ctx_left_description(Q, P, &T, phi1);
 
-    nmod_poly_mat_t Tmat, Yk, col;
-    nmod_poly_mat_init(Tmat, r, r, prime);
-    nmod_poly_mat_init(Yk, r, 1, prime);
-    nmod_poly_mat_init(col, r, 1, prime);
-    for (slong i = 0; i < r; i++)
-        nmod_poly_zero(nmod_poly_mat_entry(Tmat, i, 0));
-    for (slong j = 1; j < r; j++)
-    {
-        for (slong i = 0; i < r; i++)
-            nmod_poly_zero(nmod_poly_mat_entry(Yk, i, 0));
-        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(Yk, j, 0), 0, 1);
-
-        nmod_apply_T(col, Yk, CT_phi1, PT, Dbound);
-
-        for (slong i = 0; i < r; i++)
-            nmod_poly_set(nmod_poly_mat_entry(Tmat, i, j), nmod_poly_mat_entry(col, i, 0));
-    }
-
-    /* (b) Irreducible left description via a truncated approximant basis.
-     *
-     * 2026-10-19: target from max(deg phi1, (2r-1)d) instead of deg phi1 alone,
-     * (2r-1)d being the bound degM(T) <= (2r-1)d (G2026 Lem. 4, pk_main.tex
-     * lem:real_T_algeqtodiffe). deg phi1 = degM(T) only when T is proper of
-     * width 1 (the generic case, where deg phi1 = (2r-1)d and nothing changes);
-     * when width(T) > 1 (e.g. trinomials p_r y^r + p_1 y + p_0: deg phi1 =
-     * (r+1)d, degM(T) = (2r-1)d) the old target was too small and selected rows
-     * that were only approximants, not relations -- LeftDesc then returned a
-     * WRONG operator, silently. The selected rows are now checked (Q (phi1 T) v
-     * = phi1 P v for a random constant vector v: a wrong (Q, P) passes with
-     * probability <= 1/p), and on failure the target and sigma are doubled, up
-     * to 4 times the bound; this also covers non-proper T (e.g. P of total
-     * degree d), where degM(T) has a part at infinity that deg phi1 misses. */
-    slong deg_phi1 = nmod_poly_degree(phi1);
-    slong deg_bound = FLINT_MAX(deg_phi1, (2 * r - 1) * d);
-    // Counting on column less on the right (zero column in T)
-    slong target_degree = (deg_bound + NMOD_GFUN_NONPROPER_MARGIN + r - 2) / (r - 1); /* ceil */
-    const slong target_cap = 4 * (deg_bound + NMOD_GFUN_NONPROPER_MARGIN);
-
-    nmod_poly_mat_t B, ker, v, Tv, QTv, Pv;
-    nmod_poly_mat_init(B, 2 * r, r, prime);
-    nmod_poly_mat_init(ker, 2 * r, 2 * r, prime);
-    nmod_poly_mat_init(v, r, 1, prime);
-    nmod_poly_mat_init(Tv, r, 1, prime);
-    nmod_poly_mat_init(QTv, r, 1, prime);
-    nmod_poly_mat_init(Pv, r, 1, prime);
-    slong * shift = flint_malloc(2 * r * sizeof(slong));
-    flint_rand_t vstate;
-    flint_rand_init(vstate);
-    flint_rand_set_seed(vstate, (ulong) deg_phi1 + 1, (ulong) prime);
-
-    int exact = 0;
-    while (1)
-    {
-        slong sigma = (2 * r * target_degree + r - 1) / r + 1; /* ceil(2r*target_degree/r) + 1 */
-        for (slong i = 0; i < r; i++)
-        {
-            for (slong j = 0; j < r; j++)
-            {
-                nmod_poly_neg(nmod_poly_mat_entry(B, i, j), nmod_poly_mat_entry(Tmat, i, j));
-                nmod_poly_truncate(nmod_poly_mat_entry(B, i, j), sigma);
-            }
-            nmod_poly_set_trunc(nmod_poly_mat_entry(B, i + r, i), phi1, sigma);
-        }
-        for (slong i = 0; i < 2 * r; i++)
-            shift[i] = 0;
-        nmod_poly_mat_pmbasis(ker, shift, B, sigma);
-
-        slong nbrows = 0;
-        for (slong i = 0; i < 2 * r && nbrows < r; i++)
-        {
-            if (shift[i] <= target_degree)
-            {
-                for (slong j = 0; j < r; j++)
-                {
-                    nmod_poly_set(nmod_poly_mat_entry(Q, nbrows, j), nmod_poly_mat_entry(ker, i, j));
-                    nmod_poly_set(nmod_poly_mat_entry(P, nbrows, j), nmod_poly_mat_entry(ker, i, j + r));
-                }
-                nbrows++;
-            }
-        }
-
-        if (nbrows == r)
-        {
-            /* exactness check: Q (Tmat v) == phi1 (P v), v random constant */
-            for (slong i = 0; i < r; i++)
-                nmod_poly_set_coeff_ui(nmod_poly_mat_entry(v, i, 0), 0, n_randint(vstate, prime));
-            nmod_poly_mat_mul(Tv, Tmat, v);
-            nmod_poly_mat_mul(QTv, Q, Tv);
-            nmod_poly_mat_mul(Pv, P, v);
-            nmod_poly_mat_scalar_mul_nmod_poly(Pv, Pv, phi1);
-            exact = nmod_poly_mat_equal(QTv, Pv);
-        }
-        if (exact || target_degree >= target_cap)
-            break;
-        target_degree = FLINT_MIN(2 * target_degree, target_cap);
-    }
-    if (!exact)
-        flint_throw(FLINT_ERROR, "nmod_algeqtodiffeq_T_left_description: no exact "
-                    "description of degree at most %wd found\n", target_degree);
-
-    /* (c) Rows by increasing degree, see _nmod_description_sort_rows. */
-    _nmod_description_sort_rows(Q, P);
-
-    flint_rand_clear(vstate);
-    nmod_poly_mat_clear(v);
-    nmod_poly_mat_clear(Tv);
-    nmod_poly_mat_clear(QTv);
-    nmod_poly_mat_clear(Pv);
-    flint_free(shift);
     nmod_poly_mat_clear(CT_phi1);
-    nmod_poly_mat_clear(Tmat);
-    nmod_poly_mat_clear(Yk);
-    nmod_poly_mat_clear(col);
-    nmod_poly_mat_clear(B);
-    nmod_poly_mat_clear(ker);
 }
 
 
@@ -506,8 +369,8 @@ void nmod_algeqtodiffeq_Tb_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P
                     "description of degree at most %wd found (target_degree too small?)\n",
                     target_degree);
 
-    /* rows by increasing degree, see _nmod_description_sort_rows */
-    _nmod_description_sort_rows(Q, P);
+    /* rows by increasing degree, see _nmod_poly_mat_description_sort_rows */
+    _nmod_poly_mat_description_sort_rows(Q, P);
 
     flint_free(shift);
     nmod_poly_mat_clear(CT_phi1);

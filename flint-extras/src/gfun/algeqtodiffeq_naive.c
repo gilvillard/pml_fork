@@ -78,64 +78,31 @@ void nmod_pseudo_Krylov_naive(nmod_poly_mat_t K, ulong n, const nmod_poly_mat_t 
     ulong prime = nmod_poly_mat_modulus(PT);
     slong r = (PT->r) - 1;
 
-    nmod_poly_mat_t tempN, temp;
-    nmod_poly_mat_init(tempN, r, 1, prime);
-    nmod_poly_mat_init(temp, r, 1, prime);
+    /* 2026-10-20: the computation itself is the generic nmod_T_ctx_pseudo_Krylov_naive
+     * (T_ctx.c), on an AlgeqtoDiffeq context with scale = phi1 (CT is phi1-scaled, so
+     * nothing to divide) and seed a = y; same recurrence, and its bound for
+     * nmod_apply_T, k deg(phi1) + deg(a) + deg(scale) + margin, is this function's
+     * former k deg(phi1) + deg(phi1) + margin. That bound: D bounds the x-degree of
+     * phi1*T(K_k) (the derivative terms don't go through nmod_apply_T, so don't need
+     * to be covered by D). k*deg(phi1) + deg(phi1) is the "properness" bound one
+     * would derive assuming T is an exactly proper rational map;
+     * NMOD_GFUN_NONPROPER_MARGIN on top covers inputs where T(x) is not exactly
+     * proper -- see that constant's own doc (gfun.h) for why it's a guess, not a
+     * guarantee, and what the real fix looks like. Per the user (2026-09-15): every D
+     * bound in this module is currently uncertain in this same way; this one is
+     * merely named now, not re-derived. */
+    nmod_T_ctx_struct T;
+    nmod_algeqtodiffeq_T_data_struct dat;
+    nmod_algeqtodiffeq_T_ctx_init(&T, &dat, CT, PT, phi1);
 
-    nmod_poly_t p1, p2;
-    nmod_poly_init(p1, prime);
-    nmod_poly_init(p2, prime);
+    /* a = y, i.e. column (0,1,0,...,0)^t in the monomial basis */
+    nmod_poly_mat_t a;
+    nmod_poly_mat_init(a, r, 1, prime);
+    nmod_poly_set_coeff_ui(nmod_poly_mat_entry(a, 1, 0), 0, 1);
 
-    nmod_poly_t dphi1;
-    nmod_poly_init(dphi1, prime);
-    nmod_poly_derivative(dphi1, phi1);
+    nmod_T_ctx_pseudo_Krylov_naive(K, n, &T, a, phi1);
 
-    slong deg_phi1 = nmod_poly_degree(phi1);
-
-    /* K_0 = a = y, i.e. column (0,1,0,...,0)^t in the monomial basis */
-    for (slong i = 0; i < r; i++)
-        nmod_poly_zero(nmod_poly_mat_entry(K, i, 0));
-    nmod_poly_set_coeff_ui(nmod_poly_mat_entry(K, 1, 0), 0, 1);
-
-    for (slong k = 0; k < (slong) n - 1; k++)
-    {
-        for (slong i = 0; i < r; i++)
-            nmod_poly_set(nmod_poly_mat_entry(tempN, i, 0), nmod_poly_mat_entry(K, i, k));
-
-        /* D bounds the x-degree of phi1*T(K_k) (the derivative terms
-         * below don't go through nmod_apply_T, so don't need to be
-         * covered by D). k*deg(phi1) + deg(phi1) is the "properness"
-         * bound one would derive assuming T is an exactly proper rational
-         * map; NMOD_GFUN_NONPROPER_MARGIN on top covers inputs where T(x)
-         * is not exactly proper -- see that constant's own doc (gfun.h)
-         * for why it's a guess, not a guarantee, and what the real fix
-         * looks like. Per the user (2026-09-15): every D bound in this
-         * module is currently uncertain in this same way; this one is
-         * merely named now, not re-derived. */
-        slong D = k * deg_phi1 + deg_phi1 + NMOD_GFUN_NONPROPER_MARGIN;
-
-        nmod_apply_T(temp, tempN, CT, PT, D);
-
-        for (slong i = 0; i < r; i++)
-        {
-            nmod_poly_set(nmod_poly_mat_entry(K, i, k + 1), nmod_poly_mat_entry(temp, i, 0));
-
-            nmod_poly_derivative(p1, nmod_poly_mat_entry(K, i, k));
-            nmod_poly_mul(p1, p1, phi1);
-
-            nmod_poly_mul(p2, dphi1, nmod_poly_mat_entry(K, i, k));
-            nmod_poly_scalar_mul_nmod(p2, p2, k);
-
-            nmod_poly_add(nmod_poly_mat_entry(K, i, k + 1), nmod_poly_mat_entry(K, i, k + 1), p1);
-            nmod_poly_sub(nmod_poly_mat_entry(K, i, k + 1), nmod_poly_mat_entry(K, i, k + 1), p2);
-        }
-    }
-
-    nmod_poly_mat_clear(temp);
-    nmod_poly_mat_clear(tempN);
-    nmod_poly_clear(dphi1);
-    nmod_poly_clear(p1);
-    nmod_poly_clear(p2);
+    nmod_poly_mat_clear(a);
 }
 
 

@@ -298,48 +298,47 @@ void nmod_apply_T(nmod_poly_mat_t  RT, const nmod_poly_mat_t AT, const nmod_poly
  *  that hazard and matches how randomness is threaded everywhere else in
  *  FLINT/PML (e.g. nmod_poly_randtest).
  */
+/* T context for AlgeqtoDiffeq (2026-10-20, gfun.h): apply = nmod_apply_T with the
+ * caller's x-degree bound D for the result. */
+static void _nmod_algeqtodiffeq_T_apply(nmod_poly_mat_t R, const nmod_poly_mat_t A, slong D,
+                                        const void * data)
+{
+    const nmod_algeqtodiffeq_T_data_struct * dat = data;
+    nmod_apply_T(R, A, dat->CT, dat->PT, (ulong) D);
+}
+
+void nmod_algeqtodiffeq_T_ctx_init(nmod_T_ctx_struct * T, nmod_algeqtodiffeq_T_data_struct * data,
+                                   const nmod_poly_mat_t CT, const nmod_poly_mat_t PT,
+                                   const nmod_poly_t scale)
+{
+    slong r = (PT->r) - 1;
+    data->CT = CT;
+    data->PT = PT;
+    T->r = r;
+    T->apply = _nmod_algeqtodiffeq_T_apply;
+    T->data = data;
+    T->scale = scale;
+    T->deg_bound = (2 * r - 1) * nmod_poly_mat_degree(PT);
+}
+
 void nmod_phi1(nmod_poly_t phi1, const nmod_poly_mat_t CT,
                const nmod_poly_mat_t PT, const nmod_poly_t Delta,
                flint_rand_t state)
 {
-    ulong prime = nmod_poly_mat_modulus(PT);
-    slong r = (PT->r) - 1;
-    slong d = nmod_poly_mat_degree(PT);
-    /* Margin (see NMOD_GFUN_NONPROPER_MARGIN's doc in gfun.h): the
-     * properness-derived bound is exactly the degree Delta*T(z) reaches for a
-     * constant z, so it has no cushion for an input where T is not exactly
-     * proper -- and nmod_apply_T aliases silently rather than raising. Added
-     * 2026-09-18 per the user, same reasoning (and same "headroom not actually
-     * measured" caveat) as find_uv's in algeqtodiffeq_width1.c. */
-    slong D = nmod_gfun_delta_T_degree_bound(r, d) + NMOD_GFUN_NONPROPER_MARGIN;
-
-    nmod_poly_mat_t randz, Bz;
-    nmod_poly_mat_init(randz, r, 1, prime);
-    nmod_poly_mat_init(Bz, r, 1, prime);
-
-    /* Random constant projection z. n_randbits over (near-)the full machine
-     * word, rather than e.g. nmod_poly_randtest, so that an all-zero draw
-     * (which would make z the zero vector, an unusable projection) is
-     * astronomically unlikely rather than a realistic corner case -- not a
-     * proof of nonzero-ness, matches the draft's own informal reasoning. */
-    for (slong i = 0; i < r; i++)
-        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randz, i, 0), 0,
-                                n_randbits(state, FLINT_BITS - 2));
-
-    /* Bz = Delta * T(z), fraction-free (see nmod_apply_T). */
-    nmod_apply_T(Bz, randz, CT, PT, D);
-
-    nmod_poly_t g;
-    nmod_poly_init(g, prime);
-    nmod_poly_gcd_hgcd(g, nmod_poly_mat_entry(Bz, 0, 0), Delta);
-    for (slong i = 1; i < r; i++)
-        nmod_poly_gcd_hgcd(g, g, nmod_poly_mat_entry(Bz, i, 0));
-
-    nmod_poly_div(phi1, Delta, g);
-
-    nmod_poly_clear(g);
-    nmod_poly_mat_clear(randz);
-    nmod_poly_mat_clear(Bz);
+    /* 2026-10-20: the computation itself is the generic nmod_T_ctx_phi1 (T_ctx.c),
+     * on an AlgeqtoDiffeq context (scale Delta); same draws, same result as before.
+     * Its bound for apply, deg_bound - 1 + margin = (2r-1)d - 1 + margin, is this
+     * function's former nmod_gfun_delta_T_degree_bound(r, d) + margin. Margin
+     * (see NMOD_GFUN_NONPROPER_MARGIN's doc in gfun.h): the properness-derived
+     * bound is exactly the degree Delta*T(z) reaches for a constant z, so it has
+     * no cushion for an input where T is not exactly proper -- and nmod_apply_T
+     * aliases silently rather than raising. Added 2026-09-18 per the user, same
+     * reasoning (and same "headroom not actually measured" caveat) as find_uv's
+     * in algeqtodiffeq_width1.c. */
+    nmod_T_ctx_struct T;
+    nmod_algeqtodiffeq_T_data_struct dat;
+    nmod_algeqtodiffeq_T_ctx_init(&T, &dat, CT, PT, Delta);
+    nmod_T_ctx_phi1(phi1, &T, state);
 }
 
 
@@ -505,74 +504,17 @@ void nmod_phi_T(nmod_poly_t phi1, nmod_poly_t phi2, const nmod_poly_mat_t CT,
                 const nmod_poly_mat_t PT, const nmod_poly_t Delta,
                 flint_rand_t state)
 {
-    ulong prime = nmod_poly_mat_modulus(PT);
-    slong r = (PT->r) - 1;
-    slong d = nmod_poly_mat_degree(PT);
-    /* Margin: same reasoning as nmod_phi1's above (both apply T to constant
-     * random vectors at exactly the properness bound, so neither has any
-     * cushion if T is not exactly proper, and nmod_apply_T aliases silently
-     * rather than raising). Added 2026-09-18 per the user. Harmless for the
-     * phi2 branch below: the extra points change only the bound, not the
-     * interpolated values, so the exact division by Delta stays exact. */
-    slong D = nmod_gfun_delta_T_degree_bound(r, d) + NMOD_GFUN_NONPROPER_MARGIN;
-
-    nmod_poly_mat_t randT1, randT2;
-    nmod_poly_mat_init(randT1, r, 1, prime);
-    nmod_poly_mat_init(randT2, r, 1, prime);
-    for (slong i = 0; i < r; i++)
-    {
-        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT1, i, 0), 0, n_randbits(state, FLINT_BITS - 2));
-        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randT2, i, 0), 0, n_randbits(state, FLINT_BITS - 2));
-    }
-
-    nmod_poly_mat_t colT1, colT2;
-    nmod_poly_mat_init(colT1, r, 1, prime);
-    nmod_poly_mat_init(colT2, r, 1, prime);
-    nmod_apply_T(colT1, randT1, CT, PT, D);
-    nmod_apply_T(colT2, randT2, CT, PT, D);
-
-    nmod_poly_t g;
-    nmod_poly_init(g, prime);
-    nmod_poly_gcd_hgcd(g, nmod_poly_mat_entry(colT1, 0, 0), Delta);
-    for (slong i = 1; i < r; i++)
-        nmod_poly_gcd_hgcd(g, g, nmod_poly_mat_entry(colT1, i, 0));
-    nmod_poly_div(phi1, Delta, g);
-
-    /* phi2: a random 2x2 minor of Delta*T, via two random row
-     * combinations (randU) applied to the same two random columns above. */
-    nmod_poly_mat_t randU;
-    nmod_poly_mat_init(randU, 2, r, prime);
-    for (slong i = 0; i < r; i++)
-    {
-        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randU, 0, i), 0, n_randtest(state) % prime);
-        nmod_poly_set_coeff_ui(nmod_poly_mat_entry(randU, 1, i), 0, n_randtest(state) % prime);
-    }
-
-    nmod_poly_mat_t P1, P2;
-    nmod_poly_mat_init(P1, 2, 1, prime);
-    nmod_poly_mat_init(P2, 2, 1, prime);
-    nmod_poly_mat_mul(P1, randU, colT1);
-    nmod_poly_mat_mul(P2, randU, colT2);
-
-    nmod_poly_t tp1, tp2;
-    nmod_poly_init(tp1, prime);
-    nmod_poly_init(tp2, prime);
-    nmod_poly_mul(tp1, nmod_poly_mat_entry(P1, 0, 0), nmod_poly_mat_entry(P2, 1, 0));
-    nmod_poly_mul(tp2, nmod_poly_mat_entry(P1, 1, 0), nmod_poly_mat_entry(P2, 0, 0));
-    nmod_poly_sub(tp1, tp1, tp2);
-
-    nmod_poly_div(tp1, tp1, Delta);
-    nmod_poly_gcd_hgcd(g, tp1, Delta);
-    nmod_poly_div(phi2, Delta, g);
-
-    nmod_poly_clear(g);
-    nmod_poly_clear(tp1);
-    nmod_poly_clear(tp2);
-    nmod_poly_mat_clear(randT1);
-    nmod_poly_mat_clear(randT2);
-    nmod_poly_mat_clear(colT1);
-    nmod_poly_mat_clear(colT2);
-    nmod_poly_mat_clear(randU);
-    nmod_poly_mat_clear(P1);
-    nmod_poly_mat_clear(P2);
+    /* 2026-10-20: the computation itself is the generic nmod_T_ctx_phi_T (T_ctx.c), on
+     * an AlgeqtoDiffeq context (scale Delta); same draws, same result. Its bound for
+     * apply, deg_bound - 1 + margin, is this function's former
+     * nmod_gfun_delta_T_degree_bound(r, d) + margin. Margin: same reasoning as
+     * nmod_phi1's above (both apply T to constant random vectors at exactly the
+     * properness bound, so neither has any cushion if T is not exactly proper, and
+     * nmod_apply_T aliases silently rather than raising). Added 2026-09-18 per the
+     * user. Harmless for the phi2 branch: the extra points change only the bound, not
+     * the interpolated values, so the exact division by Delta stays exact. */
+    nmod_T_ctx_struct T;
+    nmod_algeqtodiffeq_T_data_struct dat;
+    nmod_algeqtodiffeq_T_ctx_init(&T, &dat, CT, PT, Delta);
+    nmod_T_ctx_phi_T(phi1, phi2, &T, state);
 }
