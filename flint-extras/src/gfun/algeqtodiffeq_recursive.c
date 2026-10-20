@@ -104,6 +104,12 @@
  *  description (a real degree bound, or a verify-and-retry scheme bumping
  *  sigma/target_degree on failure) is a MAIN open item -- see
  *  claude-pseudoKrylov/todo.md.
+ *  **Addressed 2026-10-19** (both): the target now comes from
+ *  max(deg phi1, (2r-1)d), (2r-1)d bounding degM(T), and the selected rows
+ *  are checked (randomized exact identity) with target/sigma doubled on
+ *  failure; see step (b). Found on trinomials (width(T) > 1) and on P of
+ *  total degree d (T not proper), where the old target silently gave
+ *  non-exact rows and LeftDesc wrong operators.
  *
  *  flint_throw's if no valid r-row description is found at this
  *  target_degree (upgraded from the draft's own silent `return 0`, for
@@ -177,53 +183,96 @@ void nmod_algeqtodiffeq_T_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P,
             nmod_poly_set(nmod_poly_mat_entry(Tmat, i, j), nmod_poly_mat_entry(col, i, 0));
     }
 
-    /* (b) Irreducible left description via a truncated approximant basis. */
+    /* (b) Irreducible left description via a truncated approximant basis.
+     *
+     * 2026-10-19: target from max(deg phi1, (2r-1)d) instead of deg phi1 alone,
+     * (2r-1)d being the bound degM(T) <= (2r-1)d (G2026 Lem. 4, pk_main.tex
+     * lem:real_T_algeqtodiffe). deg phi1 = degM(T) only when T is proper of
+     * width 1 (the generic case, where deg phi1 = (2r-1)d and nothing changes);
+     * when width(T) > 1 (e.g. trinomials p_r y^r + p_1 y + p_0: deg phi1 =
+     * (r+1)d, degM(T) = (2r-1)d) the old target was too small and selected rows
+     * that were only approximants, not relations -- LeftDesc then returned a
+     * WRONG operator, silently. The selected rows are now checked (Q (phi1 T) v
+     * = phi1 P v for a random constant vector v: a wrong (Q, P) passes with
+     * probability <= 1/p), and on failure the target and sigma are doubled, up
+     * to 4 times the bound; this also covers non-proper T (e.g. P of total
+     * degree d), where degM(T) has a part at infinity that deg phi1 misses. */
     slong deg_phi1 = nmod_poly_degree(phi1);
+    slong deg_bound = FLINT_MAX(deg_phi1, (2 * r - 1) * d);
     // Counting on column less on the right (zero column in T)
-    slong target_degree = (deg_phi1 + NMOD_GFUN_NONPROPER_MARGIN + r - 2) / (r - 1); /* ceil */
-    slong sigma = (2 * r * target_degree + r - 1) / r + 1; /* ceil(2r*target_degree/r) + 1 */
+    slong target_degree = (deg_bound + NMOD_GFUN_NONPROPER_MARGIN + r - 2) / (r - 1); /* ceil */
+    const slong target_cap = 4 * (deg_bound + NMOD_GFUN_NONPROPER_MARGIN);
 
-    nmod_poly_mat_t B;
+    nmod_poly_mat_t B, ker, v, Tv, QTv, Pv;
     nmod_poly_mat_init(B, 2 * r, r, prime);
-    for (slong i = 0; i < r; i++)
-    {
-        for (slong j = 0; j < r; j++)
-        {
-            nmod_poly_neg(nmod_poly_mat_entry(B, i, j), nmod_poly_mat_entry(Tmat, i, j));
-            nmod_poly_truncate(nmod_poly_mat_entry(B, i, j), sigma);
-        }
-        nmod_poly_set_trunc(nmod_poly_mat_entry(B, i + r, i), phi1, sigma);
-    }
-
-    slong * shift = flint_malloc(2 * r * sizeof(slong));
-    for (slong i = 0; i < 2 * r; i++)
-        shift[i] = 0;
-
-    nmod_poly_mat_t ker;
     nmod_poly_mat_init(ker, 2 * r, 2 * r, prime);
-    nmod_poly_mat_pmbasis(ker, shift, B, sigma);
+    nmod_poly_mat_init(v, r, 1, prime);
+    nmod_poly_mat_init(Tv, r, 1, prime);
+    nmod_poly_mat_init(QTv, r, 1, prime);
+    nmod_poly_mat_init(Pv, r, 1, prime);
+    slong * shift = flint_malloc(2 * r * sizeof(slong));
+    flint_rand_t vstate;
+    flint_rand_init(vstate);
+    flint_rand_set_seed(vstate, (ulong) deg_phi1 + 1, (ulong) prime);
 
-    slong nbrows = 0;
-    for (slong i = 0; i < 2 * r && nbrows < r; i++)
+    int exact = 0;
+    while (1)
     {
-        if (shift[i] <= target_degree)
+        slong sigma = (2 * r * target_degree + r - 1) / r + 1; /* ceil(2r*target_degree/r) + 1 */
+        for (slong i = 0; i < r; i++)
         {
             for (slong j = 0; j < r; j++)
             {
-                nmod_poly_set(nmod_poly_mat_entry(Q, nbrows, j), nmod_poly_mat_entry(ker, i, j));
-                nmod_poly_set(nmod_poly_mat_entry(P, nbrows, j), nmod_poly_mat_entry(ker, i, j + r));
+                nmod_poly_neg(nmod_poly_mat_entry(B, i, j), nmod_poly_mat_entry(Tmat, i, j));
+                nmod_poly_truncate(nmod_poly_mat_entry(B, i, j), sigma);
             }
-            nbrows++;
+            nmod_poly_set_trunc(nmod_poly_mat_entry(B, i + r, i), phi1, sigma);
         }
+        for (slong i = 0; i < 2 * r; i++)
+            shift[i] = 0;
+        nmod_poly_mat_pmbasis(ker, shift, B, sigma);
+
+        slong nbrows = 0;
+        for (slong i = 0; i < 2 * r && nbrows < r; i++)
+        {
+            if (shift[i] <= target_degree)
+            {
+                for (slong j = 0; j < r; j++)
+                {
+                    nmod_poly_set(nmod_poly_mat_entry(Q, nbrows, j), nmod_poly_mat_entry(ker, i, j));
+                    nmod_poly_set(nmod_poly_mat_entry(P, nbrows, j), nmod_poly_mat_entry(ker, i, j + r));
+                }
+                nbrows++;
+            }
+        }
+
+        if (nbrows == r)
+        {
+            /* exactness check: Q (Tmat v) == phi1 (P v), v random constant */
+            for (slong i = 0; i < r; i++)
+                nmod_poly_set_coeff_ui(nmod_poly_mat_entry(v, i, 0), 0, n_randint(vstate, prime));
+            nmod_poly_mat_mul(Tv, Tmat, v);
+            nmod_poly_mat_mul(QTv, Q, Tv);
+            nmod_poly_mat_mul(Pv, P, v);
+            nmod_poly_mat_scalar_mul_nmod_poly(Pv, Pv, phi1);
+            exact = nmod_poly_mat_equal(QTv, Pv);
+        }
+        if (exact || target_degree >= target_cap)
+            break;
+        target_degree = FLINT_MIN(2 * target_degree, target_cap);
     }
-    if (nbrows < r)
-        flint_throw(FLINT_ERROR, "nmod_algeqtodiffeq_T_left_description: no complete "
-                    "description of degree at most %wd found (target_degree too small?)\n",
-                    target_degree);
+    if (!exact)
+        flint_throw(FLINT_ERROR, "nmod_algeqtodiffeq_T_left_description: no exact "
+                    "description of degree at most %wd found\n", target_degree);
 
     /* (c) Rows by increasing degree, see _nmod_description_sort_rows. */
     _nmod_description_sort_rows(Q, P);
 
+    flint_rand_clear(vstate);
+    nmod_poly_mat_clear(v);
+    nmod_poly_mat_clear(Tv);
+    nmod_poly_mat_clear(QTv);
+    nmod_poly_mat_clear(Pv);
     flint_free(shift);
     nmod_poly_mat_clear(CT_phi1);
     nmod_poly_mat_clear(Tmat);
