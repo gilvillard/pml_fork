@@ -382,29 +382,21 @@ void nmod_algeqtodiffeq_Tb_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P
 }
 
 
-/** Cockle's algorithm via the recursive algorithm on the quotient by the
- *  trace (pk_main.tex Sec. 6, "Modified recursive algorithm"). With
- *  K = [a, theta(a), ..., theta^m(a)], a = y, m = n-1: deleting the first
- *  row of K gives the pseudo-Krylov matrix K_b of theta_b = d/dx + T_b with
- *  seed a_b = e_0, and tau = (Tr y^i)_i has tau[0] = r, so K eta = 0 iff
- *  K_b eta = 0 and tau K eta = 0. Hence the kernel of
- *  [D_b a_b | N_b ; p_r^{m+1} tau K], with [theta_b(a_b) ...] = D_b^{-1}N_b
- *  from nmod_pseudo_Krylov_recursive in dimension r-1, and
- *  tau K = ((Tr y)^{(j)})_j, Tr y = -p_{r-1}/p_r. Same output convention as
- *  nmod_algeq_to_diffeq_recursive. Requires n >= 2, r >= 2, r != 0 in k.
- */
-slong nmod_algeq_to_diffeq_recursive_trace(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n)
+/* The quotient part shared by nmod_algeq_to_diffeq_recursive_trace and
+ * nmod_algeq_to_diffeq_inhomogeneous (factored out 2026-10-21, code unchanged): with
+ * K = [a, theta(a), ..., theta^m(a)], a = y, m = n-1, deleting the first row of K gives
+ * the pseudo-Krylov matrix K_b of theta_b = d/dx + T_b (T_b: T without its first row and
+ * column, the quotient by k(x).1, since T(1) = 0) with seed a_b = e_0. Kb ((r-1) x n,
+ * initialised by the caller) receives [D_b a_b | N_b], with
+ * [theta_b(a_b) ... theta_b^m(a_b)] = D_b^{-1} N_b from nmod_pseudo_Krylov_recursive in
+ * dimension r-1, so that Kb eta = 0 iff K_b eta = 0. Same per-call seeding as before. */
+static void
+_nmod_algeqtodiffeq_quotient_matrix(nmod_poly_mat_t Kb, const nmod_poly_mat_t PT, const slong n)
 {
     ulong prime = nmod_poly_mat_modulus(PT);
     slong r = (PT->r) - 1;
     slong m = n - 1;
     slong k = r - 1;
-
-    if (n < 2)
-        flint_throw(FLINT_DOMERR, "nmod_algeq_to_diffeq_recursive_trace: n must be >= 2\n");
-    if (r < 2 || (ulong) r % prime == 0)
-        flint_throw(FLINT_DOMERR, "nmod_algeq_to_diffeq_recursive_trace: needs r >= 2 "
-                    "and r invertible mod p\n");
 
     nmod_poly_t Delta;
     nmod_poly_mat_t iPyT, CT;
@@ -438,17 +430,37 @@ slong nmod_algeq_to_diffeq_recursive_trace(nmod_poly_mat_t LT, const nmod_poly_m
     nmod_poly_mat_init(v, k, 1, prime);
     nmod_poly_mat_mul(v, D, a);
 
-    nmod_poly_mat_t K;
-    nmod_poly_mat_init(K, r, n, prime);
     for (slong i = 0; i < k; i++)
     {
-        nmod_poly_set(nmod_poly_mat_entry(K, i, 0), nmod_poly_mat_entry(v, i, 0));
+        nmod_poly_set(nmod_poly_mat_entry(Kb, i, 0), nmod_poly_mat_entry(v, i, 0));
         for (slong j = 0; j < m; j++)
-            nmod_poly_set(nmod_poly_mat_entry(K, i, j + 1), nmod_poly_mat_entry(N, i, j));
+            nmod_poly_set(nmod_poly_mat_entry(Kb, i, j + 1), nmod_poly_mat_entry(N, i, j));
     }
 
-    /* trace row: entry j = g_j p_r^{m-j}, where (Tr y)^{(j)} = g_j / p_r^{j+1},
-     * g_0 = -p_{r-1}, g_{j+1} = g_j' p_r - (j+1) g_j p_r' */
+    flint_rand_clear(state);
+    nmod_poly_mat_clear(Q);
+    nmod_poly_mat_clear(P);
+    nmod_poly_mat_clear(a);
+    nmod_poly_mat_clear(D);
+    nmod_poly_mat_clear(N);
+    nmod_poly_mat_clear(Qt);
+    nmod_poly_mat_clear(Pt);
+    nmod_poly_mat_clear(v);
+    nmod_poly_clear(phi1);
+    nmod_poly_mat_clear(iPyT);
+    nmod_poly_mat_clear(CT);
+    nmod_poly_clear(Delta);
+}
+
+/* The trace row (factored out 2026-10-21, code unchanged): row[j] = g_j p_r^{m-j} for
+ * j = 0..m, where (Tr y)^{(j)} = g_j / p_r^{j+1}, g_0 = -p_{r-1},
+ * g_{j+1} = g_j' p_r - (j+1) g_j p_r'; so row = p_r^{m+1} ((Tr y)^{(j)})_j.
+ * row: m+1 initialised polynomials. */
+static void
+_nmod_algeqtodiffeq_trace_row(nmod_poly_struct * row, const nmod_poly_mat_t PT, const slong m)
+{
+    ulong prime = nmod_poly_mat_modulus(PT);
+    slong r = (PT->r) - 1;
     const nmod_poly_struct * pr = nmod_poly_mat_entry(PT, r, 0);
     nmod_poly_t g, dg, dpr, t, prpow;
     nmod_poly_init(g, prime);
@@ -460,7 +472,7 @@ slong nmod_algeq_to_diffeq_recursive_trace(nmod_poly_mat_t LT, const nmod_poly_m
     nmod_poly_neg(g, nmod_poly_mat_entry(PT, r - 1, 0));
     for (slong j = 0; j <= m; j++)
     {
-        nmod_poly_set(nmod_poly_mat_entry(K, k, j), g);
+        nmod_poly_set(row + j, g);
         nmod_poly_derivative(dg, g);
         nmod_poly_mul(dg, dg, pr);
         nmod_poly_mul(t, g, dpr);
@@ -470,9 +482,50 @@ slong nmod_algeq_to_diffeq_recursive_trace(nmod_poly_mat_t LT, const nmod_poly_m
     nmod_poly_one(prpow);
     for (slong j = m; j >= 0; j--)
     {
-        nmod_poly_mul(nmod_poly_mat_entry(K, k, j), nmod_poly_mat_entry(K, k, j), prpow);
+        nmod_poly_mul(row + j, row + j, prpow);
         nmod_poly_mul(prpow, prpow, pr);
     }
+    nmod_poly_clear(g);
+    nmod_poly_clear(dg);
+    nmod_poly_clear(dpr);
+    nmod_poly_clear(t);
+    nmod_poly_clear(prpow);
+}
+
+/** Cockle's algorithm via the recursive algorithm on the quotient by the
+ *  trace (pk_main.tex Sec. 6, "Modified recursive algorithm"). With
+ *  K = [a, theta(a), ..., theta^m(a)], a = y, m = n-1: deleting the first
+ *  row of K gives the pseudo-Krylov matrix K_b of theta_b = d/dx + T_b with
+ *  seed a_b = e_0, and tau = (Tr y^i)_i has tau[0] = r, so K eta = 0 iff
+ *  K_b eta = 0 and tau K eta = 0. Hence the kernel of
+ *  [D_b a_b | N_b ; p_r^{m+1} tau K], with [theta_b(a_b) ...] = D_b^{-1}N_b
+ *  from nmod_pseudo_Krylov_recursive in dimension r-1, and
+ *  tau K = ((Tr y)^{(j)})_j, Tr y = -p_{r-1}/p_r. Same output convention as
+ *  nmod_algeq_to_diffeq_recursive. Requires n >= 2, r >= 2, r != 0 in k.
+ */
+slong nmod_algeq_to_diffeq_recursive_trace(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n)
+{
+    ulong prime = nmod_poly_mat_modulus(PT);
+    slong r = (PT->r) - 1;
+    slong m = n - 1;
+    slong k = r - 1;
+
+    if (n < 2)
+        flint_throw(FLINT_DOMERR, "nmod_algeq_to_diffeq_recursive_trace: n must be >= 2\n");
+    if (r < 2 || (ulong) r % prime == 0)
+        flint_throw(FLINT_DOMERR, "nmod_algeq_to_diffeq_recursive_trace: needs r >= 2 "
+                    "and r invertible mod p\n");
+
+    nmod_poly_mat_t K, Kb;
+    nmod_poly_mat_init(Kb, k, n, prime);
+    _nmod_algeqtodiffeq_quotient_matrix(Kb, PT, n);
+    nmod_poly_mat_init(K, r, n, prime);
+    for (slong i = 0; i < k; i++)
+        for (slong j = 0; j < n; j++)
+            nmod_poly_swap(nmod_poly_mat_entry(K, i, j), nmod_poly_mat_entry(Kb, i, j));
+
+    /* trace row: entry j = g_j p_r^{m-j}, (Tr y)^{(j)} = g_j / p_r^{j+1} */
+    _nmod_algeqtodiffeq_trace_row(nmod_poly_mat_entry(K, k, 0), PT, m);
 
     slong * pivind = flint_malloc(n * sizeof(slong));
     slong * shift = flint_calloc(n, sizeof(slong));
@@ -480,25 +533,97 @@ slong nmod_algeq_to_diffeq_recursive_trace(nmod_poly_mat_t LT, const nmod_poly_m
     flint_free(pivind);
     flint_free(shift);
 
-    nmod_poly_clear(g);
-    nmod_poly_clear(dg);
-    nmod_poly_clear(dpr);
-    nmod_poly_clear(t);
-    nmod_poly_clear(prpow);
-    flint_rand_clear(state);
-    nmod_poly_mat_clear(Q);
-    nmod_poly_mat_clear(P);
-    nmod_poly_mat_clear(a);
-    nmod_poly_mat_clear(D);
-    nmod_poly_mat_clear(N);
-    nmod_poly_mat_clear(Qt);
-    nmod_poly_mat_clear(Pt);
-    nmod_poly_mat_clear(v);
+    nmod_poly_mat_clear(Kb);
     nmod_poly_mat_clear(K);
-    nmod_poly_clear(phi1);
-    nmod_poly_mat_clear(iPyT);
-    nmod_poly_mat_clear(CT);
-    nmod_poly_clear(Delta);
-
     return nz;
+}
+
+/** Inhomogeneous operators (2026-10-21): a minimal basis (zero shift) of the operators
+ *  L = sum_{j <= m} eta_j d^j, m = n-1, with L(y) in k(x), i.e. of the kernel of the
+ *  quotient pseudo-Krylov matrix K_b (see _nmod_algeqtodiffeq_quotient_matrix): since
+ *  T(1) = 0, k(x).1 is stable under theta, and K_b eta = 0 iff
+ *  sum_j eta_j theta^j(y) lies in k(x).1. Only the recursion on T_b (dimension r-1) and
+ *  the nullspace of [D_b a_b | N_b] ((r-1) x n). Same output convention as
+ *  nmod_algeq_to_diffeq_recursive: returns nz (generically m - r + 2 = n - r + 1), the
+ *  first nz columns of LT (n x n) are the operators. Requires n >= 2, r >= 2. The right
+ *  hand sides f = L(y): nmod_algeq_to_diffeq_inhomogeneous_rhs.
+ */
+slong nmod_algeq_to_diffeq_inhomogeneous(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n)
+{
+    ulong prime = nmod_poly_mat_modulus(PT);
+    slong r = (PT->r) - 1;
+
+    if (n < 2)
+        flint_throw(FLINT_DOMERR, "nmod_algeq_to_diffeq_inhomogeneous: n must be >= 2\n");
+    if (r < 2)
+        flint_throw(FLINT_DOMERR, "nmod_algeq_to_diffeq_inhomogeneous: needs r >= 2\n");
+
+    nmod_poly_mat_t Kb;
+    nmod_poly_mat_init(Kb, r - 1, n, prime);
+    _nmod_algeqtodiffeq_quotient_matrix(Kb, PT, n);
+
+    slong * pivind = flint_malloc(n * sizeof(slong));
+    slong * shift = flint_calloc(n, sizeof(slong));
+    slong nz = nmod_poly_mat_kernel(LT, pivind, shift, Kb, ORD_WEAK_POPOV, COL_UPPER);
+    flint_free(pivind);
+    flint_free(shift);
+
+    nmod_poly_mat_clear(Kb);
+    return nz;
+}
+
+/** Right hand side of an inhomogeneous operator (2026-10-21): for column col of LT
+ *  (n x ., L = sum_{j < n} LT[j][col] d^j with L(y) = f in k(x), e.g. from
+ *  nmod_algeq_to_diffeq_inhomogeneous), f = num / den, reduced, den monic. Since L has
+ *  coefficients in k(x), L(y_i) = f for every root y_i of P; summing over the roots,
+ *  r f = L(Tr y), Tr y = -p_{r-1}/p_r (Vieta), so f = F / (r p_r^{m+1}),
+ *  F = sum_j eta_j g_j p_r^{m-j} (the trace row, _nmod_algeqtodiffeq_trace_row).
+ *  Requires r invertible mod p. num, den initialised.
+ */
+void nmod_algeq_to_diffeq_inhomogeneous_rhs(nmod_poly_t num, nmod_poly_t den,
+                                            const nmod_poly_mat_t LT, const slong col,
+                                            const nmod_poly_mat_t PT)
+{
+    ulong prime = nmod_poly_mat_modulus(PT);
+    slong r = (PT->r) - 1;
+    slong m = LT->r - 1;
+
+    if (r < 1 || (ulong) r % prime == 0)
+        flint_throw(FLINT_DOMERR, "nmod_algeq_to_diffeq_inhomogeneous_rhs: needs r invertible mod p\n");
+
+    nmod_poly_struct * row = flint_malloc((m + 1) * sizeof(nmod_poly_struct));
+    for (slong j = 0; j <= m; j++)
+        nmod_poly_init(row + j, prime);
+    _nmod_algeqtodiffeq_trace_row(row, PT, m);
+
+    nmod_poly_t t, g;
+    nmod_poly_init(t, prime);
+    nmod_poly_init(g, prime);
+    nmod_poly_zero(num);
+    for (slong j = 0; j <= m; j++)
+    {
+        nmod_poly_mul(t, nmod_poly_mat_entry(LT, j, col), row + j);
+        nmod_poly_add(num, num, t);
+    }
+    nmod_poly_scalar_mul_nmod(num, num, n_invmod((ulong) r % prime, prime));
+
+    nmod_poly_pow(den, nmod_poly_mat_entry(PT, r, 0), (ulong) (m + 1));
+    if (nmod_poly_is_zero(num))
+        nmod_poly_one(den);
+    else
+    {
+        nmod_poly_gcd(g, num, den);
+        nmod_poly_div(num, num, g);
+        nmod_poly_div(den, den, g);
+        ulong lc = nmod_poly_lead(den)[0];
+        ulong ilc = n_invmod(lc, prime);
+        nmod_poly_scalar_mul_nmod(num, num, ilc);
+        nmod_poly_scalar_mul_nmod(den, den, ilc);
+    }
+
+    for (slong j = 0; j <= m; j++)
+        nmod_poly_clear(row + j);
+    flint_free(row);
+    nmod_poly_clear(t);
+    nmod_poly_clear(g);
 }

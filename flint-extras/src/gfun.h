@@ -495,6 +495,29 @@ void nmod_algeqtodiffeq_Tb_left_description(nmod_poly_mat_t Q, nmod_poly_mat_t P
  */
 slong nmod_algeq_to_diffeq_recursive_trace(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
 
+/** Inhomogeneous operators (2026-10-21): a minimal basis (zero shift) of the operators
+ *  L of order <= n-1 with L(y) in k(x), from the recursion on T_b (quotient by k(x).1,
+ *  dimension r-1) and the nullspace of [D_b a_b | N_b] only (no trace row). Same output
+ *  convention as nmod_algeq_to_diffeq_recursive; generically nz = n - r + 1. Requires
+ *  n >= 2, r >= 2. See algeqtodiffeq_recursive.c.
+ */
+slong nmod_algeq_to_diffeq_inhomogeneous(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
+
+/** Right hand side f = L(y) = num/den (reduced, den monic) of the operator in column col
+ *  of LT (e.g. from nmod_algeq_to_diffeq_inhomogeneous): f = L(Tr y)/r, Tr y =
+ *  -p_{r-1}/p_r, den | p_r^{m+1}, m = LT->r - 1. Requires r invertible mod p.
+ */
+void nmod_algeq_to_diffeq_inhomogeneous_rhs(nmod_poly_t num, nmod_poly_t den,
+                                            const nmod_poly_mat_t LT, const slong col,
+                                            const nmod_poly_mat_t PT);
+
+/** Inhomogeneous operators by PseudoKrylovWidth1 on the block T_b (2026-10-21): same output
+ *  as nmod_algeq_to_diffeq_inhomogeneous, via _nmod_T_ctx_width1_core on a T context for T_b
+ *  (dimension r-1, seed e_0). Throws if T_b does not have width <= 1. Requires n >= 2,
+ *  r >= 2. See algeqtodiffeq_width1.c.
+ */
+slong nmod_algeq_to_diffeq_inhomogeneous_width1(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n);
+
 /** The "Series" (heuristic) family, algeqtodiffeq's fourth pseudo-Krylov
  *  approach (draft nmod_algeq_to_diffeq_series_phi1, gfun.c, not otherwise
  *  touched) -- no numbered algorithm in algos.pdf/G2026.pdf to cross-check

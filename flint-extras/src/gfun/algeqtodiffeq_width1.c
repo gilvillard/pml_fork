@@ -392,3 +392,112 @@ slong nmod_algeq_to_diffeq_width1(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, 
 
     return nz;
 }
+
+
+/* The block T_b of AlgeqtoDiffeq as a T context (2026-10-21): since T(1) = 0, the first
+ * column of T is zero, so T_b = T without its first row and column is the map induced on the
+ * quotient by k(x).1. apply(R, A, D, data) for A ((r-1) x 1): rows 1..r-1 of
+ * scale * T((0, A)) with the full context's apply; same scale and bound. */
+typedef struct
+{
+    const nmod_T_ctx_struct * full;
+} _nmod_algeqtodiffeq_Tb_data_struct;
+
+static void
+_nmod_algeqtodiffeq_Tb_apply(nmod_poly_mat_t R, const nmod_poly_mat_t A, slong D, const void * data)
+{
+    const _nmod_algeqtodiffeq_Tb_data_struct * dat = (const _nmod_algeqtodiffeq_Tb_data_struct *) data;
+    slong r = dat->full->r;
+    ulong prime = nmod_poly_mat_modulus(A);
+    nmod_poly_mat_t Af, Rf;
+    nmod_poly_mat_init(Af, r, 1, prime);
+    nmod_poly_mat_init(Rf, r, 1, prime);
+    for (slong i = 1; i < r; i++)
+        nmod_poly_set(nmod_poly_mat_entry(Af, i, 0), nmod_poly_mat_entry(A, i - 1, 0));
+    dat->full->apply(Rf, Af, D, dat->full->data);
+    for (slong i = 1; i < r; i++)
+        nmod_poly_swap(nmod_poly_mat_entry(R, i - 1, 0), nmod_poly_mat_entry(Rf, i, 0));
+    nmod_poly_mat_clear(Af);
+    nmod_poly_mat_clear(Rf);
+}
+
+/** Inhomogeneous operators by PseudoKrylovWidth1 on the block (2026-10-21): the same
+ *  output as nmod_algeq_to_diffeq_inhomogeneous (a minimal basis, zero shift, of the
+ *  operators L of order <= n-1 with L(y) in k(x)), computed by _nmod_T_ctx_width1_core on
+ *  theta_b = d/dx + T_b, T_b = T without its first row and column (dimension r-1), seed
+ *  a_b = e_0 (the image of y). phi1(T) and C rescaled to it as in
+ *  _nmod_algeq_to_diffeq_width1; phi1(T_b) (and phi2 for the width check, r-1 >= 2) on the
+ *  block context. Throws if T_b does not have width <= 1. Requires n >= 2, r >= 2.
+ */
+slong nmod_algeq_to_diffeq_inhomogeneous_width1(nmod_poly_mat_t LT, const nmod_poly_mat_t PT, const slong n)
+{
+    if (n < 2)
+        flint_throw(FLINT_DOMERR, "nmod_algeq_to_diffeq_inhomogeneous_width1: n must be >= 2\n");
+    ulong prime = nmod_poly_mat_modulus(PT);
+    slong r = (PT->r) - 1;
+    slong k = r - 1;
+    if (r < 2)
+        flint_throw(FLINT_DOMERR, "nmod_algeq_to_diffeq_inhomogeneous_width1: needs r >= 2\n");
+
+    nmod_poly_t Delta;
+    nmod_poly_mat_t iPyT, CT;
+    nmod_algeqtodiffeq_setup(Delta, iPyT, CT, PT);
+
+    /* same per-call seeding as nmod_algeq_to_diffeq_width1 */
+    flint_rand_t state;
+    flint_rand_init(state);
+    srand((unsigned int) clock());
+    flint_rand_set_seed(state, rand(), rand());
+
+    /* full context with scale phi1(T), as _nmod_algeq_to_diffeq_width1 */
+    nmod_poly_t phi1, phi1b, phi2b;
+    nmod_poly_init(phi1, prime);
+    nmod_poly_init(phi1b, prime);
+    nmod_poly_init(phi2b, prime);
+    nmod_phi1(phi1, CT, PT, Delta, state);
+    nmod_poly_mat_t CT_phi1;
+    nmod_poly_mat_init(CT_phi1, r, 1, prime);
+    for (slong i = 0; i < r; i++)
+        nmod_poly_set(nmod_poly_mat_entry(CT_phi1, i, 0), nmod_poly_mat_entry(CT, i, 0));
+    nmod_algeqtodiffeq_rescale_CT_by_phi1(CT_phi1, PT, Delta, phi1);
+    nmod_T_ctx_struct T;
+    nmod_algeqtodiffeq_T_data_struct dat;
+    nmod_algeqtodiffeq_T_ctx_init(&T, &dat, CT_phi1, PT, phi1);
+
+    /* block context */
+    _nmod_algeqtodiffeq_Tb_data_struct datb;
+    datb.full = &T;
+    nmod_T_ctx_struct Tb;
+    Tb.r = k;
+    Tb.apply = _nmod_algeqtodiffeq_Tb_apply;
+    Tb.data = &datb;
+    Tb.scale = T.scale;
+    Tb.deg_bound = T.deg_bound;
+
+    if (k >= 2)
+    {
+        nmod_T_ctx_phi_T(phi1b, phi2b, &Tb, state);
+        if (nmod_poly_degree(phi1b) != nmod_poly_degree(phi2b))
+            flint_throw(FLINT_ERROR, "nmod_algeq_to_diffeq_inhomogeneous_width1: T_b does not have "
+                        "width <= 1 (deg(phi1)=%wd, deg(phi2)=%wd)\n",
+                        nmod_poly_degree(phi1b), nmod_poly_degree(phi2b));
+    }
+    else
+        nmod_T_ctx_phi1(phi1b, &Tb, state);
+
+    nmod_poly_mat_t ab;
+    nmod_poly_mat_init(ab, k, 1, prime);
+    nmod_poly_set_coeff_ui(nmod_poly_mat_entry(ab, 0, 0), 0, 1);
+    slong nz = _nmod_T_ctx_width1_core(LT, ab, (ulong) (n - 1), &Tb, phi1b, state);
+
+    nmod_poly_mat_clear(ab);
+    nmod_poly_mat_clear(CT_phi1);
+    nmod_poly_clear(phi1);
+    nmod_poly_clear(phi1b);
+    nmod_poly_clear(phi2b);
+    flint_rand_clear(state);
+    nmod_poly_mat_clear(iPyT);
+    nmod_poly_mat_clear(CT);
+    nmod_poly_clear(Delta);
+    return nz;
+}
